@@ -1,5 +1,6 @@
 package com.blesense.app
 
+import BigAdvScannerScreen
 import android.app.Activity
 import android.app.Application
 import androidx.activity.ComponentActivity
@@ -92,7 +93,7 @@ fun AppNavigation(navController: NavHostController) {
 
         // Login screen
         composable("login") {
-            LoginScreen(
+            BleSenseLoginScreen(
                 viewModel = authViewModel,
                 onNavigateToRegister = {
                     navController.navigate("register")
@@ -138,6 +139,12 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
 
+        composable("sht40_group") {
+            SHT40GroupScreen(
+                viewModel = bluetoothViewModel,
+                navController = navController
+            )
+        }
         // Game loading screen
 //        composable("game_loading") {
 //            BLEGamesScreen(navController = navController)
@@ -157,10 +164,19 @@ fun AppNavigation(navController: NavHostController) {
 //        }
         // Robot control screen (safe back handling)
         composable("robot_screen") {
-            val act = LocalContext.current as? Activity
+            val activity = LocalContext.current as? Activity
+            
+            androidx.compose.runtime.DisposableEffect(Unit) {
+                val originalOrientation = activity?.requestedOrientation
+                activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                onDispose {
+                    activity?.requestedOrientation = originalOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
+            }
+            
             RobotControlScreen(
                 onBackPressed = {
-                    act?.finish()
+                    navController.popBackStack()
                 }
             )
         }
@@ -176,6 +192,20 @@ fun AppNavigation(navController: NavHostController) {
                 },
                 navController = navController
             )
+        }
+        
+        // Analytics screen
+        composable("analytics_screen") {
+            AnalyticsScreen(navController = navController)
+        }
+        composable("sensor_error_screen") {
+            SensorErrorScreen(navController = navController)
+        }
+        
+
+// Advertising screen
+        composable("advertiser_screen") {
+            AdvertisingScreen(navController = navController)
         }
 
         // Advertising data screen
@@ -249,6 +279,25 @@ fun AppNavigation(navController: NavHostController) {
             val value = backStackEntry.arguments?.getString("value")
 
             ChartScreen2(navController = navController, title = title, value = value)
+        }
+
+        // Raw data viewer screen
+        composable(
+            route = "raw_data_viewer/{deviceAddress}",
+            arguments = listOf(
+                navArgument("deviceAddress") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val deviceAddress = backStackEntry.arguments?.getString("deviceAddress") ?: ""
+            RawDataViewerScreen(
+                navController = navController,
+                deviceAddress = deviceAddress,
+                viewModel = bluetoothViewModel
+            )
+        }
+
+        composable("bigadv_scanner_screen") {
+            BigAdvScannerScreen(navController = navController, viewModel = bluetoothViewModel)
         }
     }
 }

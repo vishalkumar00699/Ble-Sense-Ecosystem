@@ -32,13 +32,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Circle
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -63,14 +62,30 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// ── BleSense unified design tokens ─────────────────────────────────────────────
+private val BgDark          = Color(0xFF0A0A0F)
+private val SurfaceDark     = Color(0xFF141418)
+private val CardDark        = Color(0xFF1A1A22)
+private val CardDark2       = Color(0xFF12121A)
+private val DividerDark     = Color(0xFF252530)
+private val GreenAccent     = Color(0xFF00BC7D)
+private val GreenDark       = Color(0xFF0D542B)
+private val GreenMuted      = Color(0xFF00BC7D26)
+private val BlueAccent      = Color(0xFF60A5FA)
+private val YellowAccent    = Color(0xFFFBBF24)
+private val OrangeAccent    = Color(0xFFFB923C)
+private val PurpleAccent    = Color(0xFFA78BFA)
+private val TealAccent      = Color(0xFF2DD4BF)
+private val RedAccent       = Color(0xFFFF6467)
+private val TextPrimary     = Color(0xFFF0F0F0)
+private val TextSecondary   = Color(0xFF9F9FA9)
+
 /**
- * Data class to hold text for the Advertising Data screen.
- * This provides localization support for UI strings in the advertising data display.
+ * Localization-ready text strings for the Advertising Data screen.
  */
 data class AdvertisingText(
     val advertisingDataTitle: String = "Advertising Data",
@@ -103,17 +118,9 @@ data class AdvertisingText(
     val rawData: String = "Raw Data"
 )
 
-/**
- * Main composable function for the Advertising Data screen.
- * Displays real-time sensor data from a specific BLE device with visualization,
- * threshold alarms, data export, and various sensor type support.
- *
- * @param deviceAddress MAC address of the BLE device
- * @param deviceName Human-readable name of the device
- * @param navController For navigation between screens
- * @param deviceId Unique identifier for the device/node
- * @param viewModel ViewModel handling BLE scanning and data processing
- */
+// ══════════════════════════════════════════════════════════════════════════════
+// ADVERTISING DATA SCREEN
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
 fun AdvertisingDataScreen(
     deviceAddress: String,
@@ -122,68 +129,45 @@ fun AdvertisingDataScreen(
     deviceId: String,
     viewModel: BluetoothScanViewModel<Any?>
 ) {
-    val context = LocalContext.current
+    val context  = LocalContext.current
     val activity = context as? Activity
 
-    // Initialize ViewModel with factory pattern
     val viewModel: BluetoothScanViewModel<Any> = viewModel(
         factory = remember { BluetoothScanViewModelFactory(context) }
     )
 
-    // Start BLE scanning when activity becomes available
     LaunchedEffect(activity) {
         activity?.let { viewModel.startScan(it) }
     }
 
-    // MediaPlayer for alarm sound with loop capability
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
-    // Initialize MediaPlayer once
     LaunchedEffect(Unit) {
-        mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply {
-            isLooping = true
-        }
+        mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply { isLooping = true }
     }
 
-    // Clean up MediaPlayer when composable is disposed
     DisposableEffect(Unit) {
         onDispose {
-            mediaPlayer?.let { player ->
-                if (player.isPlaying) {
-                    player.stop()
-                }
-                player.reset()
-                player.release()
-            }
+            mediaPlayer?.let { p -> if (p.isPlaying) p.stop(); p.reset(); p.release() }
             mediaPlayer = null
         }
     }
 
-    // Collect theme and device states
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-    val devices by viewModel.devices.collectAsState()
+    val isDarkMode   by ThemeManager.isDarkMode.collectAsState()
+    val devices      by viewModel.devices.collectAsState()
 
-    // Find the current device from the list of discovered devices
     val currentDevice by remember(devices, deviceAddress) {
         derivedStateOf { devices.find { it.address == deviceAddress } }
     }
 
-    // State for threshold configuration and alarm management
-    var thresholdValue by remember { mutableStateOf("") }
-    var isAlarmActive by remember { mutableStateOf(false) }
-    var showAlertDialog by remember { mutableStateOf(false) }
-    var parameterType by remember { mutableStateOf("Temperature") }
-    var isThresholdSet by remember { mutableStateOf(false) }
-
-    val scope = rememberCoroutineScope()
-
-    // Blinking animation for alarm visualization
-    val isBlinking by remember(isAlarmActive) {
-        derivedStateOf { isAlarmActive }
-    }
+    var thresholdValue   by remember { mutableStateOf("") }
+    var isAlarmActive    by remember { mutableStateOf(false) }
+    var showAlertDialog  by remember { mutableStateOf(false) }
+    var parameterType    by remember { mutableStateOf("Temperature") }
+    var isThresholdSet   by remember { mutableStateOf(false) }
 
     val blinkAlpha by animateFloatAsState(
-        targetValue = if (isBlinking) 0.5f else 0f,
+        targetValue = if (isAlarmActive) 0.5f else 0f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 500),
             repeatMode = RepeatMode.Reverse
@@ -191,650 +175,541 @@ fun AdvertisingDataScreen(
         label = "blinkAlpha"
     )
 
-    // Extract ammonia value from sensor data with safe parsing
     val ammoniaValue by remember(currentDevice?.sensorData) {
         derivedStateOf {
-            when (val sensorData = currentDevice?.sensorData) {
-                is BluetoothScanViewModel.SensorData.AmmoniaSensorData ->
-                    sensorData.ammonia.replace(" ppm", "").toFloatOrNull() ?: 0f
-                else -> 0f
-            }
+            (currentDevice?.sensorData as? BluetoothScanViewModel.SensorData.AmmoniaSensorData)
+                ?.ammonia?.replace(" ppm", "")?.toFloatOrNull() ?: 0f
         }
     }
 
-    // Debounced ammonia value to prevent rapid UI updates
     var displayedAmmoniaValue by remember { mutableStateOf(0f) }
-    val debouncedAmmoniaValue by remember(ammoniaValue) {
-        derivedStateOf { ammoniaValue }
-    }
+    LaunchedEffect(ammoniaValue) { displayedAmmoniaValue = ammoniaValue }
 
-    LaunchedEffect(debouncedAmmoniaValue) {
-        displayedAmmoniaValue = debouncedAmmoniaValue
-    }
-
-    // Extract lux value from sensor data
     val luxValue by remember(currentDevice?.sensorData) {
         derivedStateOf {
-            when (val sensorData = currentDevice?.sensorData) {
-                is BluetoothScanViewModel.SensorData.LuxSensorData ->
-                    sensorData.lux.toFloatOrNull() ?: 0f
-                else -> 0f
-            }
+            (currentDevice?.sensorData as? BluetoothScanViewModel.SensorData.LuxSensorData)
+                ?.lux?.toFloatOrNull() ?: 0f
         }
     }
 
-    // Threshold monitoring and alarm triggering logic
+    // Threshold monitoring
     LaunchedEffect(currentDevice, thresholdValue, parameterType, isThresholdSet) {
-        delay(500L) // Debounce delay
+        delay(500L)
         if (isThresholdSet) {
             val threshold = thresholdValue.toFloatOrNull()
             if (threshold != null) {
-                // Check different sensor types for threshold violations
-                when (val sensorData = currentDevice?.sensorData) {
+                when (val sd = currentDevice?.sensorData) {
                     is BluetoothScanViewModel.SensorData.SHT40Data -> {
-                        val valueToCheck = when (parameterType) {
-                            "Temperature" -> sensorData.temperature.toFloatOrNull()
-                            "Humidity" -> sensorData.humidity.toFloatOrNull()
+                        val v = when (parameterType) {
+                            "Temperature" -> sd.temperature.toFloatOrNull()
+                            "Humidity"    -> sd.humidity.toFloatOrNull()
                             else -> null
                         }
-                        isAlarmActive = valueToCheck != null && valueToCheck > threshold
+                        isAlarmActive = v != null && v > threshold
                     }
-                    is BluetoothScanViewModel.SensorData.AmmoniaSensorData -> {
+                    is BluetoothScanViewModel.SensorData.AmmoniaSensorData ->
                         isAlarmActive = parameterType == "Ammonia" && ammoniaValue > threshold
-                    }
                     else -> isAlarmActive = false
                 }
-
-                // Trigger alarm if threshold is exceeded
                 if (isAlarmActive) {
                     showAlertDialog = true
-                    mediaPlayer?.let { player ->
-                        if (!player.isPlaying) {
-                            try {
-                                player.start()
-                            } catch (e: IllegalStateException) {
-                                // Recreate MediaPlayer if in invalid state
-                                mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply {
-                                    isLooping = true
-                                    start()
-                                }
-                            }
-                        }
-                    }
+                    mediaPlayer?.let { p -> if (!p.isPlaying) try { p.start() } catch (_: IllegalStateException) {
+                        mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply { isLooping = true; start() }
+                    }}
                 } else {
-                    // Stop alarm if threshold is not exceeded
-                    mediaPlayer?.let { player ->
-                        try {
-                            if (player.isPlaying) {
-                                player.stop()
-                                player.prepare()
-                            }
-                        } catch (e: IllegalStateException) {
-                            // Recreate MediaPlayer if needed
-                            mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply {
-                                isLooping = true
-                            }
-                        }
-                    }
+                    mediaPlayer?.let { p -> try { if (p.isPlaying) { p.stop(); p.prepare() } } catch (_: IllegalStateException) {
+                        mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply { isLooping = true }
+                    }}
                     showAlertDialog = false
                 }
             } else {
-                // Invalid threshold value
-                isAlarmActive = false
-                showAlertDialog = false
-                mediaPlayer?.let { player ->
-                    try {
-                        if (player.isPlaying) {
-                            player.stop()
-                            player.prepare()
-                        }
-                    } catch (e: IllegalStateException) {
-                        mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply {
-                            isLooping = true
-                        }
-                    }
-                }
+                isAlarmActive = false; showAlertDialog = false
+                mediaPlayer?.let { p -> try { if (p.isPlaying) { p.stop(); p.prepare() } } catch (_: IllegalStateException) {
+                    mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply { isLooping = true }
+                }}
             }
         } else {
-            // Threshold not set
-            isAlarmActive = false
-            showAlertDialog = false
-            mediaPlayer?.let { player ->
-                try {
-                    if (player.isPlaying) {
-                        player.stop()
-                        player.prepare()
-                    }
-                } catch (e: IllegalStateException) {
-                    mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply {
-                        isLooping = true
-                    }
-                }
-            }
+            isAlarmActive = false; showAlertDialog = false
+            mediaPlayer?.let { p -> try { if (p.isPlaying) { p.stop(); p.prepare() } } catch (_: IllegalStateException) {
+                mediaPlayer = MediaPlayer.create(context, R.raw.nuclear_alarm)?.apply { isLooping = true }
+            }}
         }
     }
 
-    // Use fixed English text (localization ready)
     val advertisingText = AdvertisingText()
 
-    // Transform sensor data into displayable format based on sensor type
     val displayData by remember(currentDevice?.sensorData, advertisingText) {
         derivedStateOf {
-            when (val sensorData = currentDevice?.sensorData) {
+            when (val sd = currentDevice?.sensorData) {
                 is BluetoothScanViewModel.SensorData.SHT40Data -> listOf(
-                    "Device ID" to sensorData.deviceId,
-                    advertisingText.temperature to "${sensorData.temperature.takeIf { it.isNotEmpty() } ?: "0"}°C",
-                    advertisingText.humidity to "${sensorData.humidity.takeIf { it.isNotEmpty() } ?: "0"}%"
+                    "Device ID" to sd.deviceId,
+                    advertisingText.temperature to "${sd.temperature.ifEmpty { "0" }}°C",
+                    advertisingText.humidity    to "${sd.humidity.ifEmpty { "0" }}%"
                 )
                 is BluetoothScanViewModel.SensorData.SDTData -> listOf(
-                    "Device ID" to sensorData.deviceId,
-                    advertisingText.speed to "${sensorData.speed.takeIf { it.isNotEmpty() } ?: "0"} m/s",
-                    advertisingText.distance to "${sensorData.distance.takeIf { it.isNotEmpty() } ?: "0"} m"
+                    "Device ID" to sd.deviceId,
+                    advertisingText.speed    to "${sd.speed.ifEmpty { "0" }} m/s",
+                    advertisingText.distance to "${sd.distance.ifEmpty { "0" }} m"
                 )
                 is BluetoothScanViewModel.SensorData.LIS2DHData -> listOf(
-                    "Device ID" to sensorData.deviceId,
-                    advertisingText.xAxis to "${sensorData.x.takeIf { it.isNotEmpty() } ?: "0"} m/s²",
-                    advertisingText.yAxis to "${sensorData.y.takeIf { it.isNotEmpty() } ?: "0"} m/s²",
-                    advertisingText.zAxis to "${sensorData.z.takeIf { it.isNotEmpty() } ?: "0"} m/s²"
+                    "Device ID" to sd.deviceId,
+                    advertisingText.xAxis to "${sd.x.ifEmpty { "0" }} m/s²",
+                    advertisingText.yAxis to "${sd.y.ifEmpty { "0" }} m/s²",
+                    advertisingText.zAxis to "${sd.z.ifEmpty { "0" }} m/s²"
                 )
                 is BluetoothScanViewModel.SensorData.SoilSensorData -> listOf(
-                    "Device ID" to sensorData.deviceId,
-                    advertisingText.nitrogen to "${sensorData.nitrogen.takeIf { it.isNotEmpty() } ?: "0"} mg/kg",
-                    advertisingText.phosphorus to "${sensorData.phosphorus.takeIf { it.isNotEmpty() } ?: "0"} mg/kg",
-                    advertisingText.potassium to "${sensorData.potassium.takeIf { it.isNotEmpty() } ?: "0"} mg/kg",
-                    advertisingText.moisture to "${sensorData.moisture.takeIf { it.isNotEmpty() } ?: "0"}%",
-                    advertisingText.temperature to "${sensorData.temperature.takeIf { it.isNotEmpty() } ?: "0"}°C",
-                    advertisingText.electricConductivity to "${sensorData.ec.takeIf { it.isNotEmpty() } ?: "0"} mS/cm",
-                    advertisingText.pH to "${sensorData.pH.takeIf { it.isNotEmpty() } ?: "0"}",
-                    advertisingText.salinity to "${sensorData.salinity.takeIf { it.isNotEmpty() } ?: "0"} mg/L"
+                    "Device ID" to sd.deviceId,
+                    advertisingText.nitrogen            to "${sd.nitrogen.ifEmpty { "0" }} mg/kg",
+                    advertisingText.phosphorus          to "${sd.phosphorus.ifEmpty { "0" }} mg/kg",
+                    advertisingText.potassium           to "${sd.potassium.ifEmpty { "0" }} mg/kg",
+                    advertisingText.moisture            to "${sd.moisture.ifEmpty { "0" }}%",
+                    advertisingText.temperature         to "${sd.temperature.ifEmpty { "0" }}°C",
+                    advertisingText.electricConductivity to "${sd.ec.ifEmpty { "0" }} µS/cm",
+                    advertisingText.pH                  to sd.pH.ifEmpty { "0" },
+                    advertisingText.salinity            to "${sd.salinity.ifEmpty { "0" }} mg/L"
                 )
                 is BluetoothScanViewModel.SensorData.TempLoggerData -> listOf(
-                    "Device ID" to sensorData.deviceId,
-                    advertisingText.temperature to "${sensorData.temperature}°C",
-                    advertisingText.humidity to "${sensorData.humidity}%",
-                    advertisingText.rawData to sensorData.rawData
+                    "Device ID" to sd.deviceId,
+                    advertisingText.temperature to "${sd.temperature}°C",
+                    advertisingText.humidity    to "${sd.humidity}%",
+                    advertisingText.rawData     to sd.rawData
                 )
                 is BluetoothScanViewModel.SensorData.AmmoniaSensorData -> listOf(
-                    "Device ID" to sensorData.deviceId,
-                    advertisingText.ammonia to sensorData.ammonia,
-                    advertisingText.rawData to sensorData.rawData
+                    "Device ID" to sd.deviceId,
+                    advertisingText.ammonia to sd.ammonia,
+                    advertisingText.rawData to sd.rawData
                 )
                 is BluetoothScanViewModel.SensorData.DataLoggerData -> listOf(
-                    "Device ID" to sensorData.deviceId,
-                    "Total Stored Packets" to "${sensorData.currentPacketId}",
-                    "Current Received Packet ID" to "${sensorData.lastPacketId}",
-                    "Accel Points in Packet" to "${sensorData.payloadAccel.size}",
-                    "Packet Receive Time" to SimpleDateFormat("yyyy-MM-dd\nHH:mm:ss", Locale.getDefault())
-                        .format(Date(sensorData.timestamp)),
-                    advertisingText.rawData to sensorData.rawData
+                    "Device ID"                      to sd.deviceId,
+                    "Total Stored Packets"           to "${sd.currentPacketId}",
+                    "Current Received Packet ID"     to "${sd.lastPacketId}",
+                    "Accel Points in Packet"         to "${sd.payloadAccel.size}",
+                    "Packet Receive Time"            to SimpleDateFormat("yyyy-MM-dd\nHH:mm:ss", Locale.getDefault()).format(Date(sd.timestamp)),
+                    advertisingText.rawData          to sd.rawData
+                )
+                is BluetoothScanViewModel.SensorData.Sen66Data -> listOf(
+                    "Device ID" to sd.deviceId,
+                    "PM1.0"     to "${sd.pm1.ifEmpty { "0" }} μg/m³",
+                    "PM2.5"     to "${sd.pm25.ifEmpty { "0" }} μg/m³",
+                    "PM4.0"     to "${sd.pm4.ifEmpty { "0" }} μg/m³",
+                    "PM10"      to "${sd.pm10.ifEmpty { "0" }} μg/m³",
+                    advertisingText.temperature to "${sd.temperature.ifEmpty { "0" }}°C",
+                    advertisingText.humidity    to "${sd.humidity.ifEmpty { "0" }}%",
+                    "CO₂"       to "${sd.co2.ifEmpty { "0" }} ppm",
+                    "VOC"       to sd.voc.ifEmpty { "0" },
+                    "NOx"       to sd.nox.ifEmpty { "0" },
+                    "Air Quality" to sd.airQualityIndex.ifEmpty { "0" }
                 )
                 else -> emptyList()
             }
         }
     }
 
-    // Theme-aware background gradient
-    val backgroundGradient = if (isDarkMode) {
-        Brush.verticalGradient(listOf(Color(0xFF1E1E1E), Color(0xFF424242)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF0A74DA), Color(0xFFADD8E6)))
-    }
-
-    // Theme-aware colors
-    val cardBackground = if (isDarkMode) Color(0xFF2A2A2A) else Color(0xFF2A9EE5)
-    val textColor = if (isDarkMode) Color.White else Color.White
-    val buttonColor = if (isDarkMode) Color(0xFF64B5F6) else Color(0xFF0A74DA)
-
-    // Clean up resources when navigating away
     DisposableEffect(navController) {
-        onDispose {
-            viewModel.stopScan()
-            viewModel.clearDevices()
-        }
+        onDispose { viewModel.stopScan(); viewModel.clearDevices() }
     }
 
-    // Main screen layout
+    // ── Root layout ────────────────────────────────────────────────────────
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundGradient)
+            .background(BgDark)
             .systemBarsPadding()
-            .padding(WindowInsets.systemBars.asPaddingValues()),
-        contentAlignment = Alignment.Center
     ) {
         // Alarm blink overlay
         if (isAlarmActive) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Red.copy(alpha = blinkAlpha))
+                    .background(RedAccent.copy(alpha = blinkAlpha * 0.4f))
             )
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(WindowInsets.systemBars.asPaddingValues()),
-            verticalArrangement = Arrangement.SpaceEvenly,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Header with navigation and chart button
-            HeaderSection(
+        Column(modifier = Modifier.fillMaxSize()) {
+
+            // ── Top App Bar ────────────────────────────────────────────────
+            AdvertisingTopBar(
+                deviceName   = deviceName,
+                deviceAddress = deviceAddress,
+                isAlarmActive = isAlarmActive,
                 navController = navController,
-                viewModel = viewModel,
-                deviceAddress = deviceAddress,
-                advertisingText = advertisingText,
-                textColor = textColor
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Device information section
-            DeviceInfoSection(
-                deviceName = deviceName,
-                deviceAddress = deviceAddress,
-                deviceId = deviceId,
-                advertisingText = advertisingText,
-                cardBackground = cardBackground,
-                cardGradient = Brush.verticalGradient(listOf(cardBackground, cardBackground.copy(alpha = 0.6f))),
-                textColor = textColor
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // DataLogger specific display (if applicable)
-            if (currentDevice?.sensorData is BluetoothScanViewModel.SensorData.DataLoggerData) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    val latestPacket = viewModel.latestDataLoggerPacket.collectAsState().value
-
-                    if (latestPacket != null) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            InfoCard(
-                                text = "Total Packets\n${latestPacket.currentPacketId}",
-                                cardBackground = cardBackground,
-                                cardGradient = Brush.verticalGradient(listOf(cardBackground, cardBackground.copy(alpha = 0.8f))),
-                                textColor = textColor
-                            )
-                            InfoCard(
-                                text = "Current Received ID\n${latestPacket.lastPacketId}",
-                                cardBackground = cardBackground,
-                                cardGradient = Brush.verticalGradient(listOf(cardBackground, cardBackground.copy(alpha = 0.8f))),
-                                textColor = textColor
-                            )
-                            InfoCard(
-                                text = "Accel Points\n${latestPacket.payloadAccel.size}",
-                                cardBackground = cardBackground,
-                                cardGradient = Brush.verticalGradient(listOf(cardBackground, cardBackground.copy(alpha = 0.8f))),
-                                textColor = textColor
-                            )
-                            InfoCard(
-                                text = "Receive Time\n${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(latestPacket.timestamp))}",
-                                cardBackground = cardBackground,
-                                cardGradient = Brush.verticalGradient(listOf(cardBackground, cardBackground.copy(alpha = 0.8f))),
-                                textColor = textColor
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    // Full History with XYZ + Raw
-                    DataLoggerDisplay(viewModel = viewModel)
-                }
-            }
-
-            // Responsive data cards for sensor readings
-            ResponsiveDataCards(
-                data = displayData,
-                cardBackground = cardBackground,
-                advertisingText = advertisingText,
-                textColor = textColor
-            )
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // TempLogger specific display (if applicable)
-            if (currentDevice?.sensorData is BluetoothScanViewModel.SensorData.TempLoggerData) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(600.dp)
-                        .padding(horizontal = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF0F8FF)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                ) {
-                    TempLoggerDisplay(
-                        viewModel = viewModel,
-                        deviceAddress = deviceAddress,
-                        deviceId = deviceId,
-                        deviceName = deviceName
-                    )
-                }
-                Spacer(modifier = Modifier.height(32.dp))
-            }
-
-            // Threshold input section for supported sensor types
-            if (currentDevice?.sensorData is BluetoothScanViewModel.SensorData.SHT40Data ||
-                currentDevice?.sensorData is BluetoothScanViewModel.SensorData.AmmoniaSensorData
-            ) {
-                ThresholdInputSection(
-                    thresholdValue = thresholdValue,
-                    onThresholdChange = { thresholdValue = it },
-                    parameterType = parameterType,
-                    onParameterChange = { parameterType = it },
-                    isDarkMode = isDarkMode,
-                    sensorData = currentDevice?.sensorData,
-                    onConfirmThreshold = {
-                        if (thresholdValue.toFloatOrNull() != null) {
-                            isThresholdSet = true
-                        }
-                    }
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // Data download button
-            DownloadButton(
-                viewModel = viewModel,
-                deviceAddress = deviceAddress,
-                deviceName = deviceName,
-                deviceId = deviceId,
+                viewModel     = viewModel,
                 advertisingText = advertisingText
             )
 
-            // Alarm alert dialog
-            if (showAlertDialog) {
-                AlertDialog(
-                    onDismissRequest = {
-                        showAlertDialog = false
-                        isAlarmActive = false
-                        isThresholdSet = false
-                        try {
-                            mediaPlayer?.stop()
-                            mediaPlayer?.prepare()
-                        } catch (e: IllegalStateException) {
-                            mediaPlayer?.reset()
-                            MediaPlayer.create(context, R.raw.nuclear_alarm)?.let {
-                                mediaPlayer?.release()
-                                mediaPlayer = it
+            // ── Scrollable body ────────────────────────────────────────────
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Device info cards
+                AdvertisingDeviceInfoSection(
+                    deviceName    = deviceName,
+                    deviceAddress = deviceAddress,
+                    deviceId      = deviceId,
+                    advertisingText = advertisingText
+                )
+
+                // DataLogger specific
+                if (currentDevice?.sensorData is BluetoothScanViewModel.SensorData.DataLoggerData) {
+                    val latestPacket = viewModel.latestDataLoggerPacket.collectAsState().value
+
+                    if (latestPacket != null) {
+                        // ── 4 info cards in a 2×2 grid (original layout, new colours) ──
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                DataLoggerInfoCard(
+                                    label = "Total Stored Packets",
+                                    value = "${latestPacket.currentPacketId}",
+                                    accentColor = GreenAccent,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                DataLoggerInfoCard(
+                                    label = "Current Received Packet ID",
+                                    value = "${latestPacket.lastPacketId}",
+                                    accentColor = BlueAccent,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                DataLoggerInfoCard(
+                                    label = "Accel Points in Packet",
+                                    value = "${latestPacket.payloadAccel.size}",
+                                    accentColor = PurpleAccent,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                DataLoggerInfoCard(
+                                    label = "Packet Receive Time",
+                                    value = SimpleDateFormat(
+                                        "HH:mm:ss",
+                                        Locale.getDefault()
+                                    ).format(Date(latestPacket.timestamp)),
+                                    accentColor = TealAccent,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
-                    },
-                    title = { Text(advertisingText.warningTitle) },
-                    text = {
-                        Text(
-                            text = advertisingText.warningMessage.format(
-                                parameterType,
-                                thresholdValue
-                            )
-                        )
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                showAlertDialog = false
-                                isAlarmActive = false
-                                isThresholdSet = false
-                                try {
-                                    mediaPlayer?.stop()
-                                    mediaPlayer?.prepare()
-                                } catch (e: IllegalStateException) {
-                                    mediaPlayer?.reset()
-                                    MediaPlayer.create(context, R.raw.nuclear_alarm)?.let {
-                                        mediaPlayer?.release()
-                                        mediaPlayer = it
-                                    }
-                                }
-                            }
-                        ) {
-                            Text(advertisingText.dismissButton)
-                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // ── Latest XYZ packet card (original DataLoggerXYZCard layout) ──
+                        DataLoggerXYZCard(packet = latestPacket)
                     }
+
+                    // ── Full history with packet list ──────────────────────────
+                    DataLoggerDisplay(viewModel = viewModel)
+                }
+
+                // SEN66 specific
+                if (currentDevice?.sensorData is BluetoothScanViewModel.SensorData.Sen66Data) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = CardDark,
+                        tonalElevation = 0.dp
+                    ) {
+                        Sen66SensorDisplay(
+                            sensorData = currentDevice?.sensorData as BluetoothScanViewModel.SensorData.Sen66Data
+                        )
+                    }
+                }
+
+                // General sensor data cards
+                ResponsiveDataCards(
+                    data            = displayData,
+                    cardBackground  = CardDark,
+                    advertisingText = advertisingText,
+                    textColor       = TextPrimary
+                )
+
+                // TempLogger specific
+                if (currentDevice?.sensorData is BluetoothScanViewModel.SensorData.TempLoggerData) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(600.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        color = CardDark,
+                        tonalElevation = 0.dp
+                    ) {
+                        TempLoggerDisplay(
+                            viewModel     = viewModel,
+                            deviceAddress = deviceAddress,
+                            deviceId      = deviceId,
+                            deviceName    = deviceName
+                        )
+                    }
+                }
+
+                // Threshold section
+                if (currentDevice?.sensorData is BluetoothScanViewModel.SensorData.SHT40Data ||
+                    currentDevice?.sensorData is BluetoothScanViewModel.SensorData.AmmoniaSensorData
+                ) {
+                    ThresholdInputSection(
+                        thresholdValue    = thresholdValue,
+                        onThresholdChange = { thresholdValue = it },
+                        parameterType     = parameterType,
+                        onParameterChange = { parameterType = it },
+                        isDarkMode        = true,
+                        sensorData        = currentDevice?.sensorData,
+                        onConfirmThreshold = {
+                            if (thresholdValue.toFloatOrNull() != null) isThresholdSet = true
+                        }
+                    )
+                }
+
+                // Download button
+                AdvertisingDownloadButton(
+                    viewModel     = viewModel,
+                    deviceAddress = deviceAddress,
+                    deviceName    = deviceName,
+                    deviceId      = deviceId,
+                    advertisingText = advertisingText
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+
+        // Alarm dialog
+        if (showAlertDialog) {
+            AlertDialog(
+                onDismissRequest = { dismissAlarm(showAlertDialog = { showAlertDialog = false }, isAlarmActive = { isAlarmActive = false }, isThresholdSet = { isThresholdSet = false }, mediaPlayer = mediaPlayer, context = context) },
+                containerColor   = CardDark,
+                title = { Text(advertisingText.warningTitle, color = TextPrimary, fontWeight = FontWeight.Bold) },
+                text  = { Text(advertisingText.warningMessage.format(parameterType, thresholdValue), color = TextSecondary) },
+                confirmButton = {
+                    Button(
+                        onClick = { dismissAlarm(showAlertDialog = { showAlertDialog = false }, isAlarmActive = { isAlarmActive = false }, isThresholdSet = { isThresholdSet = false }, mediaPlayer = mediaPlayer, context = context) },
+                        colors  = ButtonDefaults.buttonColors(containerColor = GreenAccent)
+                    ) {
+                        Text(advertisingText.dismissButton, color = GreenDark, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Top App Bar
+// ══════════════════════════════════════════════════════════════════════════════
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdvertisingTopBar(
+    deviceName: String,
+    deviceAddress: String,
+    isAlarmActive: Boolean,
+    navController: NavController,
+    viewModel: BluetoothScanViewModel<Any>,
+    advertisingText: AdvertisingText
+) {
+    Surface(
+        color     = SurfaceDark,
+        tonalElevation = 0.dp,
+        modifier  = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Back button
+            IconButton(onClick = { viewModel.stopScan(); navController.popBackStack() }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Device icon + title
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(GreenMuted, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Sensors, null, tint = GreenAccent, modifier = Modifier.size(18.dp))
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = deviceName.ifEmpty { "Unknown Device" },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = deviceAddress,
+                    fontSize = 10.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Alarm indicator
+            if (isAlarmActive) {
+                Box(
+                    modifier = Modifier
+                        .background(RedAccent.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(Icons.Default.Warning, null, tint = RedAccent, modifier = Modifier.size(12.dp))
+                        Text("ALARM", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RedAccent)
+                    }
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+
+            // Graph button
+            IconButton(onClick = { navController.navigate("chart_screen/$deviceAddress") }) {
+                Icon(Icons.Default.BarChart, contentDescription = "Graph", tint = GreenAccent)
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Device info section
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+private fun AdvertisingDeviceInfoSection(
+    deviceName: String,
+    deviceAddress: String,
+    deviceId: String,
+    advertisingText: AdvertisingText
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(16.dp),
+        color    = CardDark,
+        tonalElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(BlueAccent.copy(alpha = 0.15f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Bluetooth, null, tint = BlueAccent, modifier = Modifier.size(18.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("${advertisingText.deviceNameLabel}", fontSize = 10.sp, color = TextSecondary)
+                    Text(
+                        "$deviceName  ($deviceAddress)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Divider(color = DividerDark, thickness = 0.5.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(GreenMuted, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Tag, null, tint = GreenAccent, modifier = Modifier.size(18.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("${advertisingText.nodeIdLabel}", fontSize = 10.sp, color = TextSecondary)
+                    Text(deviceId, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                }
+            }
+        }
+    }
+}
+
+// ── DataLogger info card — tall card matching original InfoCard layout ─────────
+@Composable
+private fun DataLoggerInfoCard(
+    label: String,
+    value: String,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.height(90.dp),
+        shape    = RoundedCornerShape(16.dp),
+        color    = accentColor.copy(alpha = 0.08f),
+        tonalElevation = 0.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            accentColor.copy(alpha = 0.14f),
+                            accentColor.copy(alpha = 0.04f)
+                        )
+                    ),
+                    RoundedCornerShape(16.dp)
+                )
+                .padding(12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text       = label,
+                    fontSize   = 10.sp,
+                    color      = accentColor.copy(alpha = 0.75f),
+                    fontWeight = FontWeight.Medium,
+                    textAlign  = TextAlign.Center,
+                    maxLines   = 2,
+                    lineHeight = 13.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text       = value,
+                    fontSize   = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color      = accentColor,
+                    textAlign  = TextAlign.Center
                 )
             }
         }
     }
 }
 
-/**
- * Composable to display ammonia sensor data with an animated ring visualization.
- *
- * @param ammoniaValue Current ammonia concentration in ppm
- * @param modifier Compose modifier for styling
- */
-@Composable
-fun AmmoniaSensorDisplay(
-    ammoniaValue: Float,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        AmmoniaRingAnimation(ammoniaValue = ammoniaValue)
-        Text(
-            text = "%.1f ppm".format(ammoniaValue),
-            style = MaterialTheme.typography.displayMedium,
-            color = when {
-                ammoniaValue > 50 -> Red
-                ammoniaValue > 25 -> Color.Yellow
-                else -> Color.Green
-            }
-        )
-    }
-}
-
-/**
- * Animated ring visualization for ammonia sensor data.
- * Shows a circular progress indicator with color-coded fill based on concentration.
- *
- * @param ammoniaValue Ammonia concentration in ppm (0-100)
- * @param modifier Compose modifier for styling
- */
-@Composable
-fun AmmoniaRingAnimation(
-    ammoniaValue: Float,
-    modifier: Modifier = Modifier
-) {
-    // Animated fill percentage (0-1)
-    val animatedFill by animateFloatAsState(
-        targetValue = (ammoniaValue / 100f).coerceIn(0f, 1f),
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 100f),
-        label = "ammoniaFill"
-    )
-
-    // Color based on concentration level
-    val liquidColor by animateColorAsState(
-        targetValue = when {
-            ammoniaValue <= 25 -> Color(0xFF4CAF50)  // Green (safe)
-            ammoniaValue <= 50 -> Color(0xFFFFC107)  // Yellow (warning)
-            else -> Color(0xFFF44336)                // Red (danger)
-        },
-        animationSpec = tween(durationMillis = 300),
-        label = "liquidColor"
-    )
-
-    Box(
-        modifier = modifier
-            .size(220.dp)
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width / 2, size.height / 2)
-            val radius = size.minDimension * 0.4f
-            val ringWidth = size.minDimension * 0.1f
-
-            // Background ring
-            drawArc(
-                color = Color(0xFF333333).copy(alpha = 0.3f),
-                startAngle = 270f,
-                sweepAngle = 360f,
-                useCenter = false,
-                size = Size(radius * 2, radius * 2),
-                topLeft = Offset(center.x - radius, center.y - radius),
-                style = Stroke(width = ringWidth)
-            )
-
-            // Foreground fill ring
-            drawArc(
-                color = liquidColor.copy(alpha = 0.7f),
-                startAngle = 270f,
-                sweepAngle = -360f * animatedFill,
-                useCenter = false,
-                size = Size(radius * 2, radius * 2),
-                topLeft = Offset(center.x - radius, center.y - radius),
-                style = Stroke(width = ringWidth, cap = StrokeCap.Round)
-            )
-        }
-
-        // Center text display
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "%.1f".format(ammoniaValue),
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Text(
-                text = "ppm",
-                fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.8f)
-            )
-        }
-    }
-}
-
-/**
- * Composable to display lux sensor data with an animated ring visualization.
- *
- * @param luxValue Current light intensity in LUX
- * @param modifier Compose modifier for styling
- */
-@Composable
-fun LuxSensorDisplay(
-    luxValue: Float,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        LuxRingAnimation(luxValue = luxValue)
-        Text(
-            text = "%.0f LUX".format(luxValue),
-            style = MaterialTheme.typography.displayMedium,
-            color = when {
-                luxValue > 10000 -> Red
-                luxValue > 5000 -> Color.Yellow
-                else -> Color.Green
-            }
-        )
-    }
-}
-
-/**
- * Animated ring visualization for lux sensor data.
- * Shows a circular progress indicator with color-coded fill based on light intensity.
- *
- * @param luxValue Light intensity in LUX (0-20000)
- * @param modifier Compose modifier for styling
- */
-@Composable
-fun LuxRingAnimation(
-    luxValue: Float,
-    modifier: Modifier = Modifier
-) {
-    // Animated fill percentage (0-1)
-    val animatedFill by animateFloatAsState(
-        targetValue = (luxValue / 20000f).coerceIn(0f, 1f),
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 100f),
-        label = "luxFill"
-    )
-
-    // Color based on light intensity
-    val lightColor by animateColorAsState(
-        targetValue = when {
-            luxValue > 10000 -> Color(0xFFF44336)  // Red (very bright)
-            luxValue > 5000 -> Color(0xFFFFC107)   // Yellow (bright)
-            else -> Color(0xFF4CAF50)              // Green (normal)
-        },
-        animationSpec = tween(durationMillis = 300),
-        label = "lightColor"
-    )
-
-    Box(
-        modifier = modifier
-            .size(220.dp)
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width / 2, size.height / 2)
-            val radius = size.minDimension * 0.4f
-            val ringWidth = size.minDimension * 0.1f
-
-            // Background ring
-            drawArc(
-                color = Color(0xFF333333).copy(alpha = 0.3f),
-                startAngle = 270f,
-                sweepAngle = 360f,
-                useCenter = false,
-                size = Size(radius * 2, radius * 2),
-                topLeft = Offset(center.x - radius, center.y - radius),
-                style = Stroke(width = ringWidth)
-            )
-
-            // Foreground fill ring
-            drawArc(
-                color = lightColor.copy(alpha = 0.7f),
-                startAngle = 270f,
-                sweepAngle = -360f * animatedFill,
-                useCenter = false,
-                size = Size(radius * 2, radius * 2),
-                topLeft = Offset(center.x - radius, center.y - radius),
-                style = Stroke(width = ringWidth, cap = StrokeCap.Round)
-            )
-        }
-
-        // Center text display
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "%.0f".format(luxValue),
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Text(
-                text = "LUX",
-                fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.8f)
-            )
-        }
-    }
-}
-
-/**
- * Composable for inputting and confirming threshold values for sensor parameters.
- * Allows users to set alarm thresholds for temperature, humidity, or ammonia.
- *
- * @param thresholdValue Current threshold input value
- * @param onThresholdChange Callback when threshold changes
- * @param parameterType Currently selected parameter type
- * @param onParameterChange Callback when parameter type changes
- * @param isDarkMode Current theme mode
- * @param sensorData Current sensor data for validation
- * @param onConfirmThreshold Callback when threshold is confirmed
- */
+// ══════════════════════════════════════════════════════════════════════════════
+// Threshold Input Section
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun ThresholdInputSection(
     thresholdValue: String,
@@ -845,242 +720,115 @@ private fun ThresholdInputSection(
     sensorData: BluetoothScanViewModel.SensorData?,
     onConfirmThreshold: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(16.dp),
+        color    = CardDark,
+        tonalElevation = 0.dp
     ) {
-        // Parameter type selector buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(RedAccent.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.NotificationsActive, null, tint = RedAccent, modifier = Modifier.size(16.dp))
+                }
+                Text("Threshold Alarm", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            }
+
+            // Parameter selector chips
             val parameters = when (sensorData) {
-                is BluetoothScanViewModel.SensorData.SHT40Data -> listOf("Temperature", "Humidity")
+                is BluetoothScanViewModel.SensorData.SHT40Data         -> listOf("Temperature", "Humidity")
                 is BluetoothScanViewModel.SensorData.AmmoniaSensorData -> listOf("Ammonia")
                 else -> emptyList()
             }
 
-            parameters.forEach { type ->
-                Button(
-                    onClick = { onParameterChange(type) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (parameterType == type) {
-                            if (isDarkMode) Color(0xFF64B5F6) else Color(0xFF0A74DA)
-                        } else {
-                            if (isDarkMode) Color(0xFF424242) else Color(0xFFADD8E6)
-                        }
-                    )
-                ) {
-                    Text(type)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                parameters.forEach { type ->
+                    val selected = parameterType == type
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (selected) GreenAccent else DividerDark,
+                                RoundedCornerShape(20.dp)
+                            )
+                            .clickable { onParameterChange(type) }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            type,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (selected) GreenDark else TextSecondary
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Threshold input field
-        TextField(
-            value = thresholdValue,
-            onValueChange = { onThresholdChange(it) },
-            label = { Text("Enter $parameterType Threshold") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
-            isError = thresholdValue.isNotEmpty() && thresholdValue.toFloatOrNull() == null,
-            supportingText = {
-                if (thresholdValue.isNotEmpty() && thresholdValue.toFloatOrNull() == null) {
-                    Text("Please enter a valid number")
+            // Threshold input
+            OutlinedTextField(
+                value         = thresholdValue,
+                onValueChange = onThresholdChange,
+                label         = { Text("Enter $parameterType Threshold", color = TextSecondary, fontSize = 12.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier      = Modifier.fillMaxWidth(),
+                isError       = thresholdValue.isNotEmpty() && thresholdValue.toFloatOrNull() == null,
+                singleLine    = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor   = GreenAccent,
+                    unfocusedBorderColor = DividerDark,
+                    focusedTextColor     = TextPrimary,
+                    unfocusedTextColor   = TextPrimary,
+                    errorBorderColor     = RedAccent,
+                    cursorColor          = GreenAccent
+                ),
+                supportingText = {
+                    if (thresholdValue.isNotEmpty() && thresholdValue.toFloatOrNull() == null) {
+                        Text("Please enter a valid number", color = RedAccent, fontSize = 11.sp)
+                    }
                 }
-            },
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = if (isDarkMode) Color(0xFF2A2A2A) else Color.White,
-                unfocusedContainerColor = if (isDarkMode) Color(0xFF2A2A2A) else Color.White,
-                focusedTextColor = if (isDarkMode) Color.White else Color.Black,
-                unfocusedTextColor = if (isDarkMode) Color.White else Color.Black,
-                errorContainerColor = if (isDarkMode) Color(0xFF2A2A2A) else Color.White
             )
-        )
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Confirm button
-        Button(
-            onClick = onConfirmThreshold,
-            enabled = thresholdValue.isNotEmpty() && thresholdValue.toFloatOrNull() != null,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isDarkMode) Color(0xFF64B5F6) else Color(0xFF0A74DA)
-            )
-        ) {
-            Text("Confirm Threshold")
-        }
-    }
-}
-
-/**
- * Composable for the header section with navigation and graph icon.
- *
- * @param navController Navigation controller for back navigation
- * @param viewModel ViewModel for BLE operations
- * @param deviceAddress Device MAC address
- * @param advertisingText Localized text strings
- * @param textColor Current text color based on theme
- */
-@Composable
-private fun HeaderSection(
-    navController: NavController,
-    viewModel: BluetoothScanViewModel<Any>,
-    deviceAddress: String,
-    advertisingText: AdvertisingText,
-    textColor: Color
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Back button
-        IconButton(
-            onClick = {
-                viewModel.stopScan()
-                navController.popBackStack()
+            // Confirm button
+            Button(
+                onClick  = onConfirmThreshold,
+                enabled  = thresholdValue.isNotEmpty() && thresholdValue.toFloatOrNull() != null,
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                shape    = RoundedCornerShape(12.dp),
+                colors   = ButtonDefaults.buttonColors(
+                    containerColor = GreenAccent,
+                    disabledContainerColor = DividerDark
+                )
+            ) {
+                Text("Set Alarm Threshold", fontWeight = FontWeight.Bold, color = GreenDark)
             }
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = textColor
-            )
-        }
-
-        // Screen title
-        Text(
-            text = advertisingText.advertisingDataTitle,
-            fontFamily = helveticaFont,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = textColor,
-            modifier = Modifier.padding(vertical = 8.dp)
-        )
-
-        // Chart navigation button
-        IconButton(
-            onClick = { navController.navigate("chart_screen/$deviceAddress") }
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.graph),
-                contentDescription = "Graph Icon",
-                modifier = Modifier.size(40.dp)
-            )
         }
     }
 }
 
-/**
- * Composable for displaying device information cards.
- * Shows device name and node ID in formatted cards.
- *
- * @param deviceName Human-readable device name
- * @param deviceAddress MAC address
- * @param deviceId Node/device identifier
- * @param advertisingText Localized text strings
- * @param cardBackground Card background color
- * @param cardGradient Card gradient brush
- * @param textColor Text color based on theme
- */
+// ══════════════════════════════════════════════════════════════════════════════
+// Download Button
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun DeviceInfoSection(
-    deviceName: String,
-    deviceAddress: String,
-    deviceId: String,
-    advertisingText: AdvertisingText,
-    cardBackground: Color,
-    cardGradient: Brush,
-    textColor: Color
-) {
-    InfoCard(
-        text = "${advertisingText.deviceNameLabel}: $deviceName ($deviceAddress)",
-        cardBackground = cardBackground,
-        cardGradient = cardGradient,
-        textColor = textColor
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    InfoCard(
-        text = "${advertisingText.nodeIdLabel}: $deviceId",
-        cardBackground = cardBackground,
-        cardGradient = cardGradient,
-        textColor = textColor
-    )
-}
-
-/**
- * Composable for individual info card display.
- * Reusable card component for displaying labeled information.
- *
- * @param text Display text (can be multiline)
- * @param cardBackground Card background color
- * @param cardGradient Card gradient brush for visual effect
- * @param textColor Text color
- */
-@Composable
-private fun InfoCard(
-    text: String,
-    cardBackground: Color,
-    cardGradient: Brush,
-    textColor: Color
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(100.dp)
-            .padding(horizontal = 8.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = cardBackground
-    ) {
-        Box(
-            modifier = Modifier
-                .background(cardGradient)
-                .padding(12.dp)
-                .systemBarsPadding()
-        ) {
-            Text(
-                text = text,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = textColor,
-                textAlign = TextAlign.Center,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-/**
- * Composable for initiating data download as a CSV file.
- * Handles file creation and export of sensor data to CSV format.
- *
- * @param viewModel ViewModel containing historical data
- * @param deviceAddress Device MAC address
- * @param deviceName Human-readable device name
- * @param deviceId Node/device identifier
- * @param advertisingText Localized text strings
- */
-@Composable
-fun DownloadButton(
+fun AdvertisingDownloadButton(
     viewModel: BluetoothScanViewModel<Any>,
     deviceAddress: String,
     deviceName: String,
     deviceId: String,
     advertisingText: AdvertisingText
 ) {
-    val context = LocalContext.current
+    val context     = LocalContext.current
     var isExporting by remember { mutableStateOf(false) }
-    var showToast by remember { mutableStateOf(false) }
 
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-
-    // File creation launcher
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
@@ -1088,591 +836,144 @@ fun DownloadButton(
             isExporting = true
             exportDataToCSV(context, uri, viewModel, deviceAddress, deviceName, deviceId) {
                 isExporting = false
-                showToast = true
             }
         }
     }
 
-    // Toast notification
-    if (showToast) {
-        LaunchedEffect(Unit) {
-            showToast = false
-        }
-    }
-
-    // Theme-aware button colors
-    val buttonBackgroundColor = if (isDarkMode) Color(0xFFBB86FC) else Color(0xFF0A74DA)
-    val buttonTextColor = if (isDarkMode) Color.Black else Color.White
-
-    Button(
-        onClick = {
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val filename = "sensor_data_${deviceId}_$timestamp.csv"
-            createDocumentLauncher.launch(filename)
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp),
-        shape = RoundedCornerShape(12.dp),
-        enabled = !isExporting,
-        colors = ButtonDefaults.buttonColors(containerColor = buttonBackgroundColor)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(
-            text = if (isExporting) advertisingText.exportingData else advertisingText.downloadData,
-            color = buttonTextColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-/**
- * Exports sensor data to a CSV file.
- * Handles different sensor types and formats data appropriately.
- *
- * @param context Android context
- * @param uri File URI for writing
- * @param viewModel ViewModel containing historical data
- * @param deviceAddress Device MAC address
- * @deviceName Human-readable device name
- * @param deviceId Node/device identifier
- * @param onComplete Callback when export completes
- */
-private fun exportDataToCSV(
-    context: Context,
-    uri: Uri,
-    viewModel: BluetoothScanViewModel<Any>,
-    deviceAddress: String,
-    deviceName: String,
-    deviceId: String,
-    onComplete: () -> Unit
-) {
-    MainScope().launch {
-        withContext(Dispatchers.IO) {
-            try {
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    // Get historical data for the device
-                    var historicalData = viewModel.getHistoricalDataForDevice(deviceAddress).toMutableList()
-
-                    // Add current live data if no history exists
-                    if (historicalData.isEmpty()) {
-                        val currentDevice = viewModel.devices.value.find { it.address == deviceAddress }
-                        currentDevice?.sensorData?.let { sensorData ->
-                            historicalData.add(
-                                BluetoothScanViewModel.HistoricalDataEntry(
-                                    timestamp = System.currentTimeMillis(),
-                                    sensorData = sensorData
-                                )
-                            )
-                        }
-                    }
-
-                    // Exit if no data to export
-                    if (historicalData.isEmpty()) {
-                        return@use
-                    }
-
-                    // Build CSV header based on sensor type
-                    val headerBuilder = StringBuilder()
-                    headerBuilder.append("Timestamp,Device Name,Device Address,Node ID,")
-
-                    val firstSensorData = historicalData.first().sensorData
-
-                    when (firstSensorData) {
-                        is BluetoothScanViewModel.SensorData.SHT40Data ->
-                            headerBuilder.append("Temperature (°C),Humidity (%)")
-                        is BluetoothScanViewModel.SensorData.LIS2DHData ->
-                            headerBuilder.append("X-Axis (m/s²),Y-Axis (m/s²),Z-Axis (m/s²)")
-                        is BluetoothScanViewModel.SensorData.SoilSensorData ->
-                            headerBuilder.append("Nitrogen (mg/kg),Phosphorus (mg/kg),Potassium (mg/kg),Moisture (%),Temperature (°C),Electric Conductivity (mS/cm),pH,Salinity (mg/L)")
-                        is BluetoothScanViewModel.SensorData.LuxSensorData ->
-                            headerBuilder.append("Light Intensity (LUX)")
-                        is BluetoothScanViewModel.SensorData.SDTData ->
-                            headerBuilder.append("Speed (m/s),Distance (m)")
-                        is BluetoothScanViewModel.SensorData.AmmoniaSensorData ->
-                            headerBuilder.append("Ammonia (ppm)")
-                        is BluetoothScanViewModel.SensorData.DataLoggerData ->
-                            headerBuilder.append("Total Stored Packets,First Packet ID,Accel Points,Timestamp,Raw Data")
-
-                        null -> {}
-                        is BluetoothScanViewModel.SensorData.TempLoggerData -> TODO()
-                    }
-                    headerBuilder.append("\n")
-                    outputStream.write(headerBuilder.toString().toByteArray())
-
-                    // Date formatter for timestamps
-                    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-
-                    // Write each data row
-                    historicalData.forEachIndexed { index, entry ->
-                        val dataBuilder = StringBuilder()
-                        dataBuilder.append(
-                            "${dateFormat.format(Date(entry.timestamp))},$deviceName,$deviceAddress,$deviceId,"
-                        )
-
-                        // Format data based on sensor type
-                        when (val sensorData = entry.sensorData) {
-                            is BluetoothScanViewModel.SensorData.SHT40Data ->
-                                dataBuilder.append("${sensorData.temperature},${sensorData.humidity}")
-                            is BluetoothScanViewModel.SensorData.LIS2DHData ->
-                                dataBuilder.append("${sensorData.x},${sensorData.y},${sensorData.z}")
-                            is BluetoothScanViewModel.SensorData.SoilSensorData ->
-                                dataBuilder.append("${sensorData.nitrogen},${sensorData.phosphorus},${sensorData.potassium},${sensorData.moisture},${sensorData.temperature},${sensorData.ec},${sensorData.pH},${sensorData.salinity}")
-                            is BluetoothScanViewModel.SensorData.LuxSensorData ->
-                                dataBuilder.append("${sensorData.lux}")
-                            is BluetoothScanViewModel.SensorData.SDTData ->
-                                dataBuilder.append("${sensorData.speed},${sensorData.distance}")
-                            is BluetoothScanViewModel.SensorData.AmmoniaSensorData ->
-                                dataBuilder.append("${sensorData.ammonia}")
-                            is BluetoothScanViewModel.SensorData.DataLoggerData ->
-                                dataBuilder.append(
-                                    "${sensorData.currentPacketId},${sensorData.lastPacketId},${sensorData.payloadAccel.size}," +
-                                            "${dateFormat.format(Date(sensorData.timestamp))},\"${sensorData.rawData.replace("\"", "\"\"")}\""
-                                )
-
-                            null -> {}
-                            is BluetoothScanViewModel.SensorData.TempLoggerData -> TODO()
-                        }
-                        dataBuilder.append("\n")
-                        outputStream.write(dataBuilder.toString().toByteArray())
-
-                        // Flush periodically to prevent memory issues
-                        if (index % 100 == 0) outputStream.flush()
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                withContext(Dispatchers.Main) {
-                    onComplete()
-                }
-            }
+        Button(
+            onClick = {
+                val ts  = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                createDocumentLauncher.launch("sensor_data_${deviceId}_$ts.csv")
+            },
+            modifier = Modifier.weight(1f).height(48.dp),
+            shape    = RoundedCornerShape(12.dp),
+            enabled  = !isExporting,
+            colors   = ButtonDefaults.buttonColors(containerColor = GreenAccent)
+        ) {
+            Icon(Icons.Default.Download, null, tint = GreenDark, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                if (isExporting) advertisingText.exportingData else advertisingText.downloadData,
+                color      = GreenDark,
+                fontWeight = FontWeight.Bold,
+                fontSize   = 12.sp
+            )
         }
     }
 }
 
-/**
- * Composable to display TempLogger data with packet analysis.
- * Shows large data packets (224 bytes) from temperature loggers with parsing.
- *
- * @param viewModel ViewModel containing TempLogger data
- * @param deviceAddress Device MAC address
- * @param deviceId Node/device identifier
- * @param deviceName Human-readable device name
- */
+// ══════════════════════════════════════════════════════════════════════════════
+// Responsive Data Cards
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
-fun TempLoggerDisplay(
-    viewModel: BluetoothScanViewModel<Any>,
-    deviceAddress: String,
-    deviceId: String,
-    deviceName: String
+private fun ResponsiveDataCards(
+    data: List<Pair<String, String>>,
+    cardBackground: Color,
+    advertisingText: AdvertisingText,
+    textColor: Color
 ) {
-    // Unique identifier for this device
-    val uniqueDeviceId = deviceAddress
-
-    // Debug logging
-    LaunchedEffect(Unit) {
-        println("🔍 TEMPLOGGER DEBUG:")
-        println("   Device Name: $deviceName")
-        println("   Device Address: $deviceAddress")
-        println("   Device ID: $deviceId")
-        println("   Unique ID: $uniqueDeviceId")
-
-        val allPacketsMap = viewModel.tempLoggerPacketHistory.value
-        println("   Total Devices in ViewModel: ${allPacketsMap.keys.size}")
-        println("   All Unique IDs: ${allPacketsMap.keys}")
-
-        val devicePackets = allPacketsMap[uniqueDeviceId] ?: emptyList()
-        println("   Packets for THIS device: ${devicePackets.size}")
-    }
-
-    // Collect packet history
-    val allPacketsMap by viewModel.tempLoggerPacketHistory.collectAsState()
-    val allLatestPacketsMap by viewModel.latestTempLoggerPacket.collectAsState()
-
-    // Get packets specific to this device
-    val deviceSpecificPackets = remember(allPacketsMap, uniqueDeviceId) {
-        allPacketsMap[uniqueDeviceId] ?: emptyList()
-    }
-
-    val latestPacketForThisDevice = remember(allLatestPacketsMap, uniqueDeviceId) {
-        allLatestPacketsMap[uniqueDeviceId]
-    }
-
-    // Filter for large packets (224 bytes)
-    val largePackets = remember(deviceSpecificPackets) {
-        val filtered = deviceSpecificPackets.filter { packet ->
-            val byteCount = packet.rawData.split(" ")
-                .filter { it.isNotBlank() }
-                .count { it.trim().isNotEmpty() && it != " " }
-
-            println("📦 Packet ${packet.deviceId}: $byteCount bytes")
-
-            byteCount >= 224
-        }
-        println("📦 Total packets: ${deviceSpecificPackets.size}, Large: ${filtered.size}")
-        filtered
-    }
-
-    // Get latest large packet
-    val latestLargePacket = remember(latestPacketForThisDevice) {
-        if (latestPacketForThisDevice != null) {
-            val byteCount = latestPacketForThisDevice.rawData.split(" ")
-                .filter { it.isNotBlank() }
-                .count { it.trim().isNotEmpty() && it != " " }
-            if (byteCount >= 224) latestPacketForThisDevice else null
-        } else {
-            null
-        }
+    val ammoniaData = data.find { it.first.contains("Ammonia", ignoreCase = true) }
+    val rawDataItem = data.find { it.first.contains("Raw Data", ignoreCase = true) }
+    val otherData   = data.filterNot {
+        it.first.contains("Ammonia", ignoreCase = true) ||
+                it.first.contains("Raw Data", ignoreCase = true) ||
+                listOf("PM1.0","PM2.5","PM4.0","PM10","CO₂","VOC","NOx","Air Quality")
+                    .any { kw -> it.first.contains(kw, ignoreCase = true) }
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        // Header with device info and live badge
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "📦 Device ${deviceAddress.takeLast(8)} Large Packets (${largePackets.size})",
-                color = Color.Black,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
-            )
-
-            if (latestLargePacket != null) {
-                Badge(
-                    containerColor = Color(0xFF4CAF50),
-                    contentColor = Color.White
-                ) {
-                    Text(
-                        text = "Live",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        // Device info subtitle
-        Text(
-            text = "Device ID: $deviceId | Address: ${deviceAddress.takeLast(8)}",
-            color = Color.Gray,
-            fontSize = 12.sp
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Empty state
-        if (largePackets.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .systemBarsPadding()
-                    .height(100.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "No large data packets (224 bytes) received for device ${deviceAddress.takeLast(8)}",
-                        color = Color.Gray,
-                        fontSize = 14.sp
-                    )
-                    Text(
-                        text = "Received ${deviceSpecificPackets.size} normal packets (32 bytes)",
-                        color = Color.Gray.copy(alpha = 0.7f),
-                        fontSize = 12.sp
-                    )
-                }
-            }
-            return
-        }
-
-        // Statistics from large packets
-        val tempValues = largePackets.map { it.temperature.toFloatOrNull() ?: 0f }
-        val humValues = largePackets.map { it.humidity.toFloatOrNull() ?: 0f }
-
-        if (tempValues.isNotEmpty() && humValues.isNotEmpty()) {
-            val avgTemp = tempValues.average()
-            val avgHum = humValues.average()
-            val minTemp = tempValues.minOrNull() ?: 0f
-            val maxTemp = tempValues.maxOrNull() ?: 0f
-            val minHum = humValues.minOrNull() ?: 0f
-            val maxHum = humValues.maxOrNull() ?: 0f
-
-            // Statistics card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF1E3A8A)
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "📈 Device ${deviceAddress.takeLast(8)} Statistics (${largePackets.size} packets)",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "Latest: ${latestLargePacket?.temperature}°C",
-                            color = Color.Cyan,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // Temperature statistics
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "🌡️ Temperature",
-                            color = Color.Cyan,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Avg: ${String.format("%.1f", avgTemp)}°C", color = Color.White)
-                            Text("Min: ${String.format("%.1f", minTemp)}°C", color = Color(0xFF64B5F6))
-                            Text("Max: ${String.format("%.1f", maxTemp)}°C", color = Color(0xFFEF5350))
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Humidity statistics
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "💧 Humidity",
-                            color = Color.Green,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Avg: ${String.format("%.1f", avgHum)}%", color = Color.White)
-                            Text("Min: ${String.format("%.1f", minHum)}%", color = Color(0xFF64B5F6))
-                            Text("Max: ${String.format("%.1f", maxHum)}%", color = Color(0xFFEF5350))
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // List of large packets
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 500.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            items(largePackets.reversed()) { packet ->
-                TempLoggerPacketCard(
-                    packet = packet,
-                    index = largePackets.indexOf(packet) + 1,
-                    isLatest = packet == latestLargePacket,
-                    deviceName = deviceName
-                )
-            }
-        }
-    }
-}
-
-/**
- * Composable for displaying individual TempLogger packet cards.
- * Shows detailed information about each packet including raw data and parsed values.
- *
- * @param packet TempLogger data packet
- * @param index Packet index in the list
- * @param isLatest Whether this is the most recent packet
- * @param deviceName Human-readable device name
- */
-@Composable
-private fun TempLoggerPacketCard(
-    packet: BluetoothScanViewModel.SensorData.TempLoggerData,
-    index: Int,
-    isLatest: Boolean,
-    deviceName: String
-) {
-    Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isLatest) Color(0xFF2C3E50) else Color(0xFF2D3748)
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isLatest) 6.dp else 4.dp
-        ),
-        border = if (isLatest) CardDefaults.outlinedCardBorder() else null
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            // Header with device name, packet number and latest badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "$deviceName - Packet #$index",
-                        color = Color(0xFF63B3ED),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    if (isLatest) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Badge(
-                            containerColor = Color(0xFF4CAF50),
-                            contentColor = Color.White
-                        ) {
-                            Text("LATEST", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                Text(
-                    text = "Device ${packet.deviceId}",
-                    color = Color.Gray,
-                    fontSize = 12.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Expandable raw data section
-            var expanded by remember { mutableStateOf(false) }
-            var showByteGroups by remember { mutableStateOf(true) }
-
-            // Calculate actual byte count
-            val actualByteCount = remember(packet.rawData) {
-                packet.rawData.split(" ")
-                    .filter { it.isNotBlank() }
-                    .count { it.trim().isNotEmpty() && it != " " }
-            }
-
+        // Ammonia ring
+        ammoniaData?.let { (label, value) ->
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                color = Color(0xFF1A202C),
-                shape = MaterialTheme.shapes.small
+                modifier = Modifier.fillMaxWidth(),
+                shape    = RoundedCornerShape(16.dp),
+                color    = CardDark,
+                tonalElevation = 0.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(12.dp)
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    AmmoniaRingAnimation(ammoniaValue = value.replace(" ppm", "").toFloatOrNull() ?: 0f)
+                }
+            }
+        }
+
+        // Raw data
+        rawDataItem?.let { (_, value) ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape    = RoundedCornerShape(16.dp),
+                color    = CardDark,
+                tonalElevation = 0.dp
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Code, null, tint = PurpleAccent, modifier = Modifier.size(16.dp))
+                        Text("Raw Sensor Data", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = CardDark2
                     ) {
                         Text(
-                            text = if (expanded) "📄 Hide Raw Data" else "📄 Show Raw Data",
-                            color = Color(0xFFCBD5E0),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        Text(
-                            text = if (actualByteCount >= 224) "224 bytes (7×32)" else "$actualByteCount bytes",
-                            color = Color(0xFFCBD5E0).copy(alpha = 0.6f),
-                            fontSize = 11.sp
+                            text     = value,
+                            fontSize = 11.sp,
+                            color    = PurpleAccent,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(12.dp)
                         )
                     }
+                }
+            }
+        }
 
-                    if (expanded) {
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Toggle between raw hex and byte groups
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            FilterChip(
-                                selected = !showByteGroups,
-                                onClick = { showByteGroups = false },
-                                label = { Text("Raw Hex", fontSize = 10.sp) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFF3182CE),
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-
-                            FilterChip(
-                                selected = showByteGroups,
-                                onClick = { showByteGroups = true },
-                                label = { Text("32-Byte Groups", fontSize = 10.sp) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFF3182CE),
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        if (!showByteGroups) {
-                            // Show raw hex data
-                            Text(
-                                text = packet.rawData,
-                                color = Color(0xFFA0AEC0),
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                lineHeight = 16.sp
-                            )
-                        } else {
-                            // Show parsed byte groups
-                            val byteGroups = parseTempLoggerRawDataIntoByteGroups(packet.rawData)
-
-                            Text(
-                                text = if (actualByteCount <= 32)
-                                    "$actualByteCount bytes (real data)"
-                                else
-                                    "$actualByteCount bytes in ${byteGroups.count { group -> group.any { it != "--" } }} groups",
-                                color = Color(0xFFCBD5E0),
-                                fontSize = 10.sp,
-                                fontStyle = FontStyle.Italic,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            // Display byte groups in a lazy column
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 350.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                itemsIndexed(byteGroups) { index, group ->
-                                    TempLoggerByteGroupItem(
-                                        groupNumber = index + 1,
-                                        bytes = group,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
+        // Sensor value cards
+        if (otherData.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape    = RoundedCornerShape(16.dp),
+                color    = CardDark,
+                tonalElevation = 0.dp
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when (otherData.size) {
+                        1 -> DataCard(
+                            label = otherData[0].first,
+                            value = otherData[0].second,
+                            cardBackground = cardBackground,
+                            advertisingText = advertisingText,
+                            textColor = textColor
+                        )
+                        else -> {
+                            otherData.chunked(2).forEach { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    row.forEach { (label, value) ->
+                                        DataCard(
+                                            label  = label,
+                                            value  = value,
+                                            cardBackground  = cardBackground,
+                                            advertisingText = advertisingText,
+                                            textColor = textColor,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
                         }
@@ -1683,500 +984,668 @@ private fun TempLoggerPacketCard(
     }
 }
 
-/**
- * Parses TempLogger raw data into 32-byte groups.
- * Skips empty groups (all FF bytes) and handles padding.
- *
- * @param rawData Raw hex string from TempLogger
- * @return List of 32-byte groups (max 7 groups)
- */
-private fun parseTempLoggerRawDataIntoByteGroups(rawData: String?): List<List<String>> {
-    // Handle null or empty input
-    if (rawData.isNullOrBlank()) {
-        return createEmptyGroupsWithDashes()
-    }
-
-    try {
-        // Step 1: Clean and convert raw hex string to byte list
-        val bytes = rawData.split(" ")
-            .filter { it.isNotBlank() }
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-
-        val result = mutableListOf<List<String>>()
-
-        // Step 2: Group into chunks of 32 bytes
-        val groups = bytes.chunked(32)
-
-        // Step 3: Process groups - SKIP ALL-FF GROUPS COMPLETELY
-        for (chunk in groups) {
-            // Check if this group has ONLY "FF" bytes (completely empty)
-            val isAllFF = chunk.all { it.equals("FF", ignoreCase = true) }
-
-            // Skip groups with all FF bytes
-            if (isAllFF) {
-                continue
-            }
-
-            // Check if this group has any real data (not "00" or "FF")
-            val hasRealData = chunk.any {
-                it != "00" && !it.equals("FF", ignoreCase = true) && it.isNotEmpty()
-            }
-
-            // If group has real data, add it
-            if (hasRealData) {
-                val paddedGroup = if (chunk.size < 32) {
-                    chunk.toMutableList().apply {
-                        while (size < 32) add("00")
-                    }
-                } else {
-                    chunk.toMutableList()
-                }
-                result.add(paddedGroup.take(32))
-            } else {
-                // Group with mix of 00 and FF (but not all FF)
-                val displayGroup = List(32) { index ->
-                    if (index < chunk.size) {
-                        val byte = chunk[index]
-                        if (byte.equals("FF", ignoreCase = true)) "--" else byte
-                    } else {
-                        "--"
-                    }
-                }
-                result.add(displayGroup)
-            }
-
-            // Stop after 7 valid groups
-            if (result.size >= 7) break
-        }
-
-        // Step 4: If no valid groups found, return empty
-        if (result.isEmpty()) {
-            return createEmptyGroupsWithDashes()
-        }
-
-        // Step 5: Fill remaining slots with empty groups
-        while (result.size < 7) {
-            result.add(List(32) { "--" })
-        }
-
-        return result.take(7)
-
-    } catch (e: Exception) {
-        e.printStackTrace()
-        return createEmptyGroupsWithDashes()
-    }
-}
-
-/**
- * Creates empty groups with "--" for all bytes.
- * Used as fallback when no valid data is available.
- *
- * @return List of 7 empty groups with 32 "--" placeholders each
- */
-private fun createEmptyGroupsWithDashes(): List<List<String>> {
-    return List(7) { List(32) { "--" } }
-}
-
-/**
- * Creates empty groups with placeholder values.
- * Legacy function for backward compatibility.
- *
- * @return List of 7 groups with sequence numbers
- */
-private fun createEmptyGroups(): List<List<String>> {
-    return List(7) { index ->
-        List(32) { byteIndex ->
-            when (byteIndex) {
-                31 -> String.format("%02X", index + 1) // Sequence number at end
-                else -> "--"
-            }
-        }
-    }
-}
-
-/**
- * Extracts temperature and humidity from a 32-byte group.
- * Parses the first 4 bytes according to TempLogger protocol.
- *
- * @param bytes List of hex strings representing bytes
- * @return Pair of (temperature, humidity) strings
- */
-private fun extractTempHumidityFromGroup(bytes: List<String>): Pair<String, String> {
-    if (bytes.size < 4 || bytes.any { it == "--" }) {
-        return ("--" to "--")
-    }
-
-    try {
-        // For large packets: Bytes 1-4 contain Temp and Humidity
-        val byte1 = bytes[0].toIntOrNull(16) ?: 0  // Hex → Decimal
-        val byte2 = bytes[1].toIntOrNull(16) ?: 0  // Already Decimal
-        val byte3 = bytes[2].toIntOrNull(16) ?: 0  // Hex → Decimal
-        val byte4 = bytes[3].toIntOrNull(16) ?: 0  // Already Decimal
-
-        // If conversion fails, try hex fallback
-        val b2 = if (byte2 == 0 && bytes[1] != "00") bytes[1].toIntOrNull(16) ?: 0 else byte2
-        val b4 = if (byte4 == 0 && bytes[3] != "00") bytes[3].toIntOrNull(16) ?: 0 else byte4
-
-        // Calculate values (integer part + decimal part/100)
-        val temp = byte1 + b2 / 100.0
-        val humidity = byte3 + b4 / 100.0
-
-        return ("${String.format("%.2f", temp)}°C" to "${String.format("%.2f", humidity)}%")
-
-    } catch (e: Exception) {
-        return ("--" to "--")
-    }
-}
-
-/**
- * Composable for displaying a single byte group for TempLogger.
- * Shows 32 bytes in a grid with color coding and sequence information.
- *
- * @param groupNumber Group index (1-7)
- * @param bytes List of hex strings for the 32 bytes
- * @param modifier Compose modifier for styling
- */
+// ══════════════════════════════════════════════════════════════════════════════
+// Individual Data Card
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
-fun TempLoggerByteGroupItem(
-    groupNumber: Int,
-    bytes: List<String>,
+fun DataCard(
+    label: String,
+    value: String,
+    cardBackground: Color,
+    advertisingText: AdvertisingText,
+    textColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val displayBytes = bytes.take(32)
+    val numericValue = value.replace("[^0-9.]".toRegex(), "").toFloatOrNull() ?: 0f
 
-    // Determine group status
-    val hasValidData = displayBytes.any { it != "00" && it != "--" }
-    val isEmptyGroup = displayBytes.all { it == "--" }
-
-    // Extract temperature and humidity if available
-    val (temperature, humidity) = remember(displayBytes) {
-        extractTempHumidityFromGroup(displayBytes)
+    val accentColor = when {
+        label == advertisingText.temperature -> when {
+            numericValue <= 15f -> BlueAccent
+            numericValue <= 30f -> GreenAccent
+            else               -> RedAccent
+        }
+        label == advertisingText.humidity -> when {
+            numericValue <= 40f -> BlueAccent
+            numericValue <= 70f -> GreenAccent
+            else               -> RedAccent
+        }
+        label.contains("pH", ignoreCase = true)     -> TealAccent
+        label.contains("lux", ignoreCase = true)    -> YellowAccent
+        label.contains("speed", ignoreCase = true)  -> PurpleAccent
+        label.contains("nitrogen", ignoreCase = true) ||
+                label.contains("phosphorus", ignoreCase = true) ||
+                label.contains("potassium", ignoreCase = true) -> OrangeAccent
+        else -> GreenAccent
     }
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = if (hasValidData) Color(0xFF2D3748) else Color(0xFF1A202C),
-        border = BorderStroke(1.dp, if (hasValidData) Color(0xFF4A5568) else Color(0xFF2D3748)),
-        shadowElevation = 4.dp
+        shape    = RoundedCornerShape(12.dp),
+        color    = accentColor.copy(alpha = 0.10f),
+        tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Group header with temperature/humidity display
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = if (isEmptyGroup) "Group $groupNumber (Empty)" else "Group $groupNumber",
-                        color = if (hasValidData) Color(0xFF63B3ED) else Color(0xFF718096),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+            Text(
+                text      = label,
+                fontSize  = 10.sp,
+                color     = TextSecondary,
+                fontWeight = FontWeight.Medium,
+                textAlign  = TextAlign.Center
+            )
+            Text(
+                text      = value,
+                fontSize  = 18.sp,
+                color     = accentColor,
+                fontWeight = FontWeight.Bold,
+                textAlign  = TextAlign.Center,
+                maxLines   = 2,
+                lineHeight = 22.sp
+            )
+        }
+    }
+}
 
-                    // Show temperature and humidity if available
-                    if (hasValidData && temperature != "--" && humidity != "--") {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            // Temperature with emoji
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "🌡️",
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = temperature,
-                                    color = Color(0xFFF56565),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+// ══════════════════════════════════════════════════════════════════════════════
+// Ammonia Ring Animation (unchanged logic, colours updated)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+fun AmmoniaRingAnimation(ammoniaValue: Float, modifier: Modifier = Modifier) {
+    val animatedFill by animateFloatAsState(
+        targetValue = (ammoniaValue / 100f).coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 100f),
+        label = "ammoniaFill"
+    )
+    val liquidColor by animateColorAsState(
+        targetValue = when {
+            ammoniaValue <= 25 -> GreenAccent
+            ammoniaValue <= 50 -> YellowAccent
+            else               -> RedAccent
+        },
+        animationSpec = tween(300),
+        label = "liquidColor"
+    )
+    Box(
+        modifier = modifier.size(220.dp).padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center    = Offset(size.width / 2, size.height / 2)
+            val radius    = size.minDimension * 0.4f
+            val ringWidth = size.minDimension * 0.1f
+            drawArc(color = DividerDark, startAngle = 270f, sweepAngle = 360f, useCenter = false,
+                size = Size(radius*2, radius*2), topLeft = Offset(center.x-radius, center.y-radius),
+                style = Stroke(width = ringWidth))
+            drawArc(color = liquidColor.copy(alpha = 0.8f), startAngle = 270f, sweepAngle = -360f * animatedFill,
+                useCenter = false, size = Size(radius*2, radius*2), topLeft = Offset(center.x-radius, center.y-radius),
+                style = Stroke(width = ringWidth, cap = StrokeCap.Round))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("%.1f".format(ammoniaValue), fontSize = 32.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text("ppm", fontSize = 14.sp, color = TextSecondary)
+        }
+    }
+}
 
-                            // Divider
-                            Box(
-                                modifier = Modifier
-                                    .height(12.dp)
-                                    .width(1.dp)
-                                    .background(Color(0xFF4A5568))
-                            )
+@Composable
+fun AmmoniaSensorDisplay(ammoniaValue: Float, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        AmmoniaRingAnimation(ammoniaValue = ammoniaValue)
+        Text("%.1f ppm".format(ammoniaValue), style = MaterialTheme.typography.displayMedium, color = when {
+            ammoniaValue > 50 -> RedAccent
+            ammoniaValue > 25 -> YellowAccent
+            else              -> GreenAccent
+        })
+    }
+}
 
-                            // Humidity with emoji
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "💧",
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = humidity,
-                                    color = Color(0xFF68D391),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    } else if (!isEmptyGroup) {
-                        Text(
-                            text = "Bytes ${(groupNumber-1)*32+1}–${groupNumber*32}",
-                            color = Color(0xFFCBD5E0).copy(alpha = if (hasValidData) 1f else 0.5f),
-                            fontSize = 10.sp
-                        )
-                    } else {
-                        Text(
-                            text = "No data received",
-                            color = Color(0xFFCBD5E0).copy(alpha = 0.5f),
-                            fontSize = 10.sp
-                        )
+// ══════════════════════════════════════════════════════════════════════════════
+// Lux Ring Animation (colours updated)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+fun LuxRingAnimation(luxValue: Float, modifier: Modifier = Modifier) {
+    val animatedFill by animateFloatAsState(
+        targetValue = (luxValue / 20000f).coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 100f),
+        label = "luxFill"
+    )
+    val lightColor by animateColorAsState(
+        targetValue = when {
+            luxValue > 10000 -> RedAccent
+            luxValue > 5000  -> YellowAccent
+            else             -> GreenAccent
+        },
+        animationSpec = tween(300),
+        label = "lightColor"
+    )
+    Box(modifier = modifier.size(220.dp).padding(16.dp), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(size.width/2, size.height/2)
+            val radius = size.minDimension * 0.4f
+            val ring   = size.minDimension * 0.1f
+            drawArc(color = DividerDark, startAngle = 270f, sweepAngle = 360f, useCenter = false,
+                size = Size(radius*2, radius*2), topLeft = Offset(center.x-radius, center.y-radius),
+                style = Stroke(width = ring))
+            drawArc(color = lightColor.copy(alpha = 0.8f), startAngle = 270f, sweepAngle = -360f * animatedFill,
+                useCenter = false, size = Size(radius*2, radius*2), topLeft = Offset(center.x-radius, center.y-radius),
+                style = Stroke(width = ring, cap = StrokeCap.Round))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("%.0f".format(luxValue), fontSize = 32.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text("LUX", fontSize = 14.sp, color = TextSecondary)
+        }
+    }
+}
+
+@Composable
+fun LuxSensorDisplay(luxValue: Float, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LuxRingAnimation(luxValue = luxValue)
+        Text("%.0f LUX".format(luxValue), style = MaterialTheme.typography.displayMedium, color = when {
+            luxValue > 10000 -> RedAccent
+            luxValue > 5000  -> YellowAccent
+            else             -> GreenAccent
+        })
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SEN66 display (colors updated to BleSense palette)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+fun Sen66SensorDisplay(sensorData: BluetoothScanViewModel.SensorData.Sen66Data, modifier: Modifier = Modifier) {
+    val aqi      = sensorData.airQualityIndex.toIntOrNull() ?: 0
+    val aqiColor = when {
+        aqi <= 50  -> GreenAccent
+        aqi <= 100 -> YellowAccent
+        aqi <= 150 -> OrangeAccent
+        aqi <= 200 -> RedAccent
+        else       -> PurpleAccent
+    }
+
+    Column(modifier = modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // AQI banner
+        Surface(shape = RoundedCornerShape(14.dp), color = aqiColor.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("🌿 Air Quality Index", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(aqi.toString(), fontSize = 48.sp, fontWeight = FontWeight.ExtraBold, color = aqiColor)
+                Text(when { aqi<=50->"Good"; aqi<=100->"Moderate"; aqi<=150->"Unhealthy for Sensitive"; aqi<=200->"Unhealthy"; else->"Very Unhealthy" }, fontSize = 12.sp, color = TextSecondary)
+            }
+        }
+        // PM grid
+        Surface(shape = RoundedCornerShape(14.dp), color = CardDark2, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("Particulate Matter", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(bottom = 10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PMCard("PM1.0",  sensorData.pm1,  "μg/m³", BlueAccent)
+                    PMCard("PM2.5",  sensorData.pm25, "μg/m³", GreenAccent)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PMCard("PM4.0",  sensorData.pm4,  "μg/m³", YellowAccent)
+                    PMCard("PM10",   sensorData.pm10, "μg/m³", OrangeAccent)
+                }
+            }
+        }
+        // Gas sensors
+        Surface(shape = RoundedCornerShape(14.dp), color = CardDark2, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("Gas Sensors", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(bottom = 10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GasCard("Temperature", sensorData.temperature, "°C",   "🌡️", RedAccent)
+                    GasCard("Humidity",    sensorData.humidity,    "%",    "💧", BlueAccent)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GasCard("CO₂", sensorData.co2, "ppm", "🫧", TealAccent)
+                    Spacer(Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GasCard("VOC", sensorData.voc, "", "🧪", PurpleAccent)
+                    GasCard("NOx", sensorData.nox, "", "⚠️", YellowAccent)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PMCard(label: String, value: String, unit: String, color: Color) {
+    val num = value.toFloatOrNull() ?: 0f
+    val valueColor = if (label == "PM2.5") when { num<=12->GreenAccent; num<=35.4f->YellowAccent; num<=55.4f->OrangeAccent; else->RedAccent }
+    else color
+    Surface(shape = RoundedCornerShape(10.dp), color = color.copy(alpha = 0.10f), modifier = Modifier.fillMaxWidth(0.48f)) {
+        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(if (value.isNotEmpty()) value else "0", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = valueColor)
+            Text(unit, fontSize = 9.sp, color = TextSecondary)
+        }
+    }
+}
+
+@Composable
+fun GasCard(label: String, value: String, unit: String, icon: String, color: Color) {
+    Surface(shape = RoundedCornerShape(10.dp), color = color.copy(alpha = 0.10f), modifier = Modifier.fillMaxWidth(0.48f)) {
+        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$icon $label", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(if (value.isNotEmpty()) value else "0", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = color)
+            if (unit.isNotEmpty()) Text(unit, fontSize = 9.sp, color = TextSecondary)
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TempLogger display (unchanged logic, dark theme applied)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+fun TempLoggerDisplay(viewModel: BluetoothScanViewModel<Any>, deviceAddress: String, deviceId: String, deviceName: String) {
+    val uniqueDeviceId = deviceAddress
+    LaunchedEffect(Unit) {
+        println("🔍 TEMPLOGGER DEBUG: Device=$deviceName Address=$deviceAddress")
+    }
+    val allPacketsMap       by viewModel.tempLoggerPacketHistory.collectAsState()
+    val allLatestPacketsMap by viewModel.latestTempLoggerPacket.collectAsState()
+
+    val deviceSpecificPackets = remember(allPacketsMap, uniqueDeviceId) { allPacketsMap[uniqueDeviceId] ?: emptyList() }
+    val latestPacketForThis   = remember(allLatestPacketsMap, uniqueDeviceId) { allLatestPacketsMap[uniqueDeviceId] }
+
+    val largePackets = remember(deviceSpecificPackets) {
+        deviceSpecificPackets.filter { p ->
+            p.rawData.split(" ").filter { it.isNotBlank() }.count { it.isNotEmpty() && it != " " } >= 224
+        }
+    }
+    val latestLargePacket = remember(latestPacketForThis) {
+        latestPacketForThis?.takeIf { p ->
+            p.rawData.split(" ").filter { it.isNotBlank() }.count { it.isNotEmpty() && it != " " } >= 224
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Device ${deviceAddress.takeLast(8)} Large Packets (${largePackets.size})", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            if (latestLargePacket != null) {
+                Box(modifier = Modifier.background(GreenMuted, RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    Text("LIVE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = GreenAccent)
+                }
+            }
+        }
+        Text("ID: $deviceId | ${deviceAddress.takeLast(8)}", color = TextSecondary, fontSize = 11.sp)
+        Spacer(Modifier.height(12.dp))
+
+        if (largePackets.isEmpty()) {
+            Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                Text("No large packets (224 bytes) for ${deviceAddress.takeLast(8)}", color = TextSecondary, fontSize = 12.sp, textAlign = TextAlign.Center)
+            }
+            return
+        }
+
+        val tempVals = largePackets.map { it.temperature.toFloatOrNull() ?: 0f }
+        val humVals  = largePackets.map { it.humidity.toFloatOrNull()    ?: 0f }
+        if (tempVals.isNotEmpty()) {
+            Surface(shape = RoundedCornerShape(12.dp), color = CardDark2, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Statistics (${largePackets.size} packets)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        StatItem("Avg Temp",  "${String.format("%.1f", tempVals.average())}°C", GreenAccent)
+                        StatItem("Min Temp",  "${String.format("%.1f", tempVals.minOrNull()?:0f)}°C", BlueAccent)
+                        StatItem("Max Temp",  "${String.format("%.1f", tempVals.maxOrNull()?:0f)}°C", RedAccent)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        StatItem("Avg Hum",   "${String.format("%.1f", humVals.average())}%",  GreenAccent)
+                        StatItem("Min Hum",   "${String.format("%.1f", humVals.minOrNull()?:0f)}%",  BlueAccent)
+                        StatItem("Max Hum",   "${String.format("%.1f", humVals.maxOrNull()?:0f)}%",  RedAccent)
                     }
                 }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
 
-                // Sequence number badge
-                val potentialSeqNum = displayBytes.getOrNull(31)
-                val seqNum = potentialSeqNum?.toIntOrNull(16) ?: groupNumber
+        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(largePackets.reversed()) { packet ->
+                TempLoggerPacketCard(packet = packet, index = largePackets.indexOf(packet)+1, isLatest = packet == latestLargePacket, deviceName = deviceName)
+            }
+        }
+    }
+}
 
-                if (!isEmptyGroup) {
-                    Surface(
-                        shape = CircleShape,
-                        color = if (seqNum == groupNumber) Color(0xFF4CAF50).copy(alpha = 0.2f)
-                        else Color(0xFFFF9800).copy(alpha = 0.2f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (seqNum == groupNumber) Color(0xFF4CAF50) else Color(0xFFFF9800)
-                        )
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = "Seq:",
-                                color = if (seqNum == groupNumber) Color(0xFF4CAF50) else Color(0xFFFF9800),
-                                fontSize = 10.sp,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = String.format("%02X", seqNum),
-                                color = if (seqNum == groupNumber) Color(0xFF4CAF50) else Color(0xFFFF9800),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+@Composable
+private fun StatItem(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 9.sp, color = TextSecondary)
+        Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
+@Composable
+private fun TempLoggerPacketCard(packet: BluetoothScanViewModel.SensorData.TempLoggerData, index: Int, isLatest: Boolean, deviceName: String) {
+    var expanded       by remember { mutableStateOf(false) }
+    var showByteGroups by remember { mutableStateOf(true) }
+
+    val actualByteCount = remember(packet.rawData) {
+        packet.rawData.split(" ").filter { it.isNotBlank() }.count { it.isNotEmpty() && it != " " }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(14.dp),
+        color    = if (isLatest) CardDark else CardDark2,
+        border   = if (isLatest) BorderStroke(1.dp, GreenAccent.copy(alpha = 0.4f)) else null,
+        tonalElevation = if (isLatest) 6.dp else 0.dp
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("$deviceName · Packet #$index", color = BlueAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    if (isLatest) {
+                        Box(modifier = Modifier.background(GreenMuted, RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                            Text("LATEST", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GreenAccent)
+                        }
+                    }
+                }
+                Text("Device ${packet.deviceId}", color = TextSecondary, fontSize = 11.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+                shape    = RoundedCornerShape(10.dp),
+                color    = CardDark2
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (expanded) "Hide Raw Data" else "Show Raw Data", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Text(if (actualByteCount >= 224) "224 bytes (7×32)" else "$actualByteCount bytes", color = TextSecondary.copy(alpha = 0.6f), fontSize = 10.sp)
+                    }
+                    if (expanded) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = !showByteGroups, onClick = { showByteGroups = false }, label = { Text("Raw Hex", fontSize = 10.sp) },
+                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = BlueAccent, selectedLabelColor = Color.White))
+                            FilterChip(selected = showByteGroups, onClick = { showByteGroups = true }, label = { Text("32-Byte Groups", fontSize = 10.sp) },
+                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = GreenAccent, selectedLabelColor = GreenDark))
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        if (!showByteGroups) {
+                            Text(packet.rawData, color = PurpleAccent, fontSize = 10.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
+                        } else {
+                            val groups = parseTempLoggerRawDataIntoByteGroups(packet.rawData)
+                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                itemsIndexed(groups) { idx, group ->
+                                    TempLoggerByteGroupItem(groupNumber = idx+1, bytes = group, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(12.dp))
+// ══════════════════════════════════════════════════════════════════════════════
+// TempLogger byte group item (dark theme applied)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+fun TempLoggerByteGroupItem(groupNumber: Int, bytes: List<String>, modifier: Modifier = Modifier) {
+    val displayBytes    = bytes.take(32)
+    val hasValidData    = displayBytes.any { it != "00" && it != "--" }
+    val isEmptyGroup    = displayBytes.all { it == "--" }
+    val (temperature, humidity) = remember(displayBytes) { extractTempHumidityFromGroup(displayBytes) }
 
-            // Display bytes in grid if there's valid data
-            if (hasValidData) {
-                // Show header bytes info
-                val headerBytes = displayBytes.take(4)
-                if (headerBytes.any { it != "00" && it != "--" }) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Header: ",
-                            color = Color(0xFF63B3ED).copy(alpha = 0.7f),
-                            fontSize = 10.sp
-                        )
-                        Text(
-                            text = headerBytes.joinToString(" "),
-                            color = Color(0xFF63B3ED),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
+    Surface(modifier = modifier, shape = RoundedCornerShape(10.dp),
+        color  = if (hasValidData) CardDark else CardDark2,
+        border = BorderStroke(1.dp, if (hasValidData) DividerDark else CardDark2)
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text(if (isEmptyGroup) "Group $groupNumber (Empty)" else "Group $groupNumber",
+                        color = if (hasValidData) BlueAccent else TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    if (hasValidData && temperature != "--" && humidity != "--") {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("🌡️ $temperature", color = RedAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("💧 $humidity",    color = BlueAccent,  fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else if (!isEmptyGroup) {
+                        Text("Bytes ${(groupNumber-1)*32+1}–${groupNumber*32}", color = TextSecondary, fontSize = 9.sp)
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
-
-                // Bytes grid (8 columns × 4 rows)
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(8),
-                    modifier = Modifier.height(140.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
+                val seqNum = displayBytes.getOrNull(31)?.toIntOrNull(16) ?: groupNumber
+                if (!isEmptyGroup) {
+                    Box(modifier = Modifier.background(
+                        if (seqNum == groupNumber) GreenAccent.copy(0.15f) else YellowAccent.copy(0.15f),
+                        CircleShape
+                    ).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Text("Seq: ${String.format("%02X", seqNum)}",
+                            color = if (seqNum == groupNumber) GreenAccent else YellowAccent,
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            if (hasValidData) {
+                Spacer(Modifier.height(8.dp))
+                LazyVerticalGrid(columns = GridCells.Fixed(8), modifier = Modifier.height(140.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     itemsIndexed(displayBytes) { index, byte ->
-                        val byteNumber = index + 1
-                        val isHeaderByte = index < 4 && byte != "00" && byte != "--"
-                        val isSequenceByte = index == 31
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
+                        val isHeader = index < 4 && byte != "00" && byte != "--"
+                        val isSeq    = index == 31
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                             modifier = Modifier
-                                .background(
-                                    color = when {
-                                        isHeaderByte -> Color(0xFF63B3ED).copy(alpha = 0.1f)
-                                        isSequenceByte -> Color(0xFF4CAF50).copy(alpha = 0.1f)
-                                        else -> Color.Transparent
-                                    },
-                                    shape = RoundedCornerShape(4.dp)
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = when {
-                                        isHeaderByte -> Color(0xFF63B3ED).copy(alpha = 0.3f)
-                                        isSequenceByte -> Color(0xFF4CAF50).copy(alpha = 0.3f)
-                                        else -> Color(0xFF4A5568).copy(alpha = 0.3f)
-                                    },
-                                    shape = RoundedCornerShape(4.dp)
-                                )
+                                .background(when { isHeader->BlueAccent.copy(0.1f); isSeq->GreenAccent.copy(0.1f); else->Color.Transparent }, RoundedCornerShape(4.dp))
+                                .border(1.dp, when { isHeader->BlueAccent.copy(0.3f); isSeq->GreenAccent.copy(0.3f); else->DividerDark.copy(0.3f) }, RoundedCornerShape(4.dp))
                                 .padding(4.dp)
                         ) {
-                            // Byte number label
-                            Text(
-                                text = "B$byteNumber",
-                                color = when {
-                                    isHeaderByte -> Color(0xFF63B3ED)
-                                    isSequenceByte -> Color(0xFF4CAF50)
-                                    else -> Color(0xFFCBD5E0).copy(alpha = 0.6f)
-                                },
-                                fontSize = 8.sp,
-                                lineHeight = 9.sp
-                            )
-
-                            // Byte value
-                            Text(
-                                text = byte,
-                                color = when {
-                                    byte == "--" -> Color.Gray
-                                    isHeaderByte -> Color(0xFF63B3ED)
-                                    isSequenceByte -> Color(0xFF4CAF50)
-                                    byte == "00" -> Color(0xFF888888)
-                                    else -> Color(0xFF00FF88)
-                                },
-                                fontSize = 12.sp,
-                                fontWeight = if (isHeaderByte || isSequenceByte) FontWeight.Bold else FontWeight.Normal,
-                                lineHeight = 14.sp
-                            )
+                            Text("B${index+1}", color = when { isHeader->BlueAccent; isSeq->GreenAccent; else->TextSecondary.copy(0.6f) }, fontSize = 7.sp)
+                            Text(byte, color = when { byte=="--"->TextSecondary.copy(0.4f); isHeader->BlueAccent; isSeq->GreenAccent; byte=="00"->TextSecondary.copy(0.5f); else->GreenAccent }, fontSize = 11.sp, fontWeight = if (isHeader||isSeq) FontWeight.Bold else FontWeight.Normal)
                         }
                     }
                 }
             } else {
-                // Empty group message
+                Box(modifier = Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
+                    Text("No data in this group", color = TextSecondary, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+                }
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DataLogger display — full packet history with XYZ rows (original layout)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+fun DataLoggerDisplay(viewModel: BluetoothScanViewModel<Any>) {
+    val packetHistory by viewModel.dataLoggerPacketHistory.collectAsState()
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Section header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Packets History (${packetHistory.size})",
+                color      = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize   = 14.sp
+            )
+            Box(
+                modifier = Modifier
+                    .background(GreenMuted, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text("Live", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GreenAccent)
+            }
+        }
+
+        if (packetHistory.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = CardDark,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(80.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    Text("No packets received yet", color = TextSecondary, fontSize = 13.sp)
+                }
+            }
+            return
+        }
+
+        // Show only the latest packet (matches original logic)
+        val packet = packetHistory.last()
+        val accel  = packet.payloadAccel
+
+        Surface(
+            shape  = RoundedCornerShape(16.dp),
+            color  = CardDark,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Packet ID header row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(TealAccent, RoundedCornerShape(2.dp))
+                        )
+                        Text(
+                            "Packet ID: ${packet.lastPacketId}",
+                            color      = TealAccent,
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = 13.sp
+                        )
+                    }
                     Text(
-                        text = "No data in this group",
-                        color = Color(0xFF718096),
-                        fontSize = 12.sp,
-                        fontStyle = FontStyle.Italic
+                        "${accel.size} points",
+                        color    = TextSecondary,
+                        fontSize = 11.sp
                     )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (accel.isEmpty()) {
+                    Text("No accelerometer data", color = TextSecondary, fontSize = 12.sp)
+                    return@Column
+                }
+
+                // Column headers
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(CardDark2, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("#",    color = TextSecondary, fontFamily = FontFamily.Monospace, fontSize = 11.sp, modifier = Modifier.width(36.dp))
+                    Text("X",   color = RedAccent.copy(alpha = 0.7f),   fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Y",   color = GreenAccent.copy(alpha = 0.7f), fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Z",   color = BlueAccent.copy(alpha = 0.7f),  fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // XYZ data rows (first 20 points, original logic)
+                accel.take(20).forEachIndexed { index, triple ->
+                    val x = triple.first.toInt()  and 0xFF
+                    val y = triple.second.toInt() and 0xFF
+                    val z = triple.third.toInt()  and 0xFF
+                    val invalid = x == 255 && y == 255 && z == 255
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "#${index + 1}",
+                            color      = TextSecondary,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize   = 11.sp,
+                            modifier   = Modifier.width(36.dp)
+                        )
+                        Text(
+                            if (invalid) "--" else "$x",
+                            color      = if (invalid) TextSecondary else RedAccent,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize   = 12.sp,
+                            fontWeight = if (invalid) FontWeight.Normal else FontWeight.SemiBold
+                        )
+                        Text(
+                            if (invalid) "--" else "$y",
+                            color      = if (invalid) TextSecondary else GreenAccent,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize   = 12.sp,
+                            fontWeight = if (invalid) FontWeight.Normal else FontWeight.SemiBold
+                        )
+                        Text(
+                            if (invalid) "--" else "$z",
+                            color      = if (invalid) TextSecondary else BlueAccent,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize   = 12.sp,
+                            fontWeight = if (invalid) FontWeight.Normal else FontWeight.SemiBold
+                        )
+                    }
+                    // Subtle divider between rows
+                    if (index < minOf(19, accel.size - 1)) {
+                        Divider(
+                            color     = DividerDark.copy(alpha = 0.5f),
+                            thickness = 0.4.dp,
+                            modifier  = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
+                }
+
+                // "More points" indicator
+                if (accel.size > 20) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DividerDark, RoundedCornerShape(8.dp))
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "+ ${accel.size - 20} more points",
+                            color    = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/**
- * Composable to display DataLogger data with accelerometer readings.
- * Shows packet history with XYZ acceleration values.
- *
- * @param viewModel ViewModel containing DataLogger packets
- */
-@Composable
-fun DataLoggerDisplay(viewModel: BluetoothScanViewModel<Any>) {
-    val packetHistory by viewModel.dataLoggerPacketHistory.collectAsState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Packets History (${packetHistory.size})",
-            color = Color.White,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Empty state
-        if (packetHistory.isEmpty()) {
-            Text("No packets received yet", color = Color.Gray)
-            return
-        }
-
-        // Show only the latest packet for safety
-        val packet = packetHistory.last()
-
-        Text(
-            text = "Packet ID: ${packet.lastPacketId}",
-            color = Color.Cyan,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Process accelerometer data
-        val accel = packet.payloadAccel
-
-        if (accel.isEmpty()) {
-            Text("No accelerometer data", color = Color.Gray)
-            return
-        }
-
-        // Display first 20 acceleration points
-        accel.take(20).forEachIndexed { index, triple ->
-            val x = triple.first.toInt() and 0xFF  // Mask to unsigned byte
-            val y = triple.second.toInt() and 0xFF
-            val z = triple.third.toInt() and 0xFF
-
-            val isInvalid = x == 255 && y == 255 && z == 255  // Check for invalid marker
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("#${index + 1}", color = Color.Gray)
-
-                Text(
-                    text = if (isInvalid) "X: --" else "X: $x",
-                    color = if (isInvalid) Color.Gray else Color.Red
-                )
-
-                Text(
-                    text = if (isInvalid) "Y: --" else "Y: $y",
-                    color = if (isInvalid) Color.Gray else Color.Green
-                )
-
-                Text(
-                    text = if (isInvalid) "Z: --" else "Z: $z",
-                    color = if (isInvalid) Color.Gray else Color.Cyan
-                )
-            }
-        }
-    }
-}
-
-/**
- * Composable for displaying DataLogger XYZ data in a card.
- * Shows accelerometer readings with proper formatting and color coding.
- *
- * @param packet DataLogger packet containing accelerometer data
- */
+// ══════════════════════════════════════════════════════════════════════════════
+// DataLogger XYZ Card — full 80-point monospace table (original layout)
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
 fun DataLoggerXYZCard(packet: BluetoothScanViewModel.SensorData.DataLoggerData) {
     // Safe processing of acceleration data (unsigned + FF handling + limit to 80 points)
@@ -2210,48 +1679,103 @@ fun DataLoggerXYZCard(packet: BluetoothScanViewModel.SensorData.DataLoggerData) 
     }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF1E1E1E)
+        shape    = RoundedCornerShape(16.dp),
+        color    = CardDark,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = "Packet ID: ${packet.lastPacketId}",
-                color = Color.Cyan,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Display XYZ points
-            xyzPoints.forEachIndexed { index, triple ->
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(TealAccent, RoundedCornerShape(2.dp))
+                    )
+                    Text(
+                        "Packet ID: ${packet.lastPacketId}",
+                        color      = TealAccent,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = 13.sp
+                    )
+                }
+                Text(
+                    "${xyzPoints.size} pts",
+                    color    = TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Column headers
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CardDark2, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("#",  color = TextSecondary,              fontFamily = FontFamily.Monospace, fontSize = 11.sp, modifier = Modifier.width(40.dp))
+                Text("X",  color = RedAccent.copy(0.7f),       fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(60.dp))
+                Text("Y",  color = GreenAccent.copy(0.7f),     fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(60.dp))
+                Text("Z",  color = BlueAccent.copy(0.7f),      fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(60.dp))
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // All 80 XYZ points (original logic, new colours)
+            xyzPoints.forEachIndexed { i, (x, y, z) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "#${index + 1}",
-                        color = Color.Gray,
+                        "#${i + 1}",
+                        color      = TextSecondary,
                         fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.width(40.dp)
+                        fontSize   = 11.sp,
+                        modifier   = Modifier.width(40.dp)
                     )
-
                     Text(
-                        text = "X:${triple.first.padStart(4, ' ')}",
-                        color = if (triple.first == "--") Color.Gray else Color.Red,
-                        fontFamily = FontFamily.Monospace
+                        x.padStart(4, ' '),
+                        color      = if (x == "--") TextSecondary else RedAccent,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize   = 12.sp,
+                        fontWeight = if (x == "--") FontWeight.Normal else FontWeight.SemiBold,
+                        modifier   = Modifier.width(60.dp)
                     )
-
                     Text(
-                        text = "Y:${triple.second.padStart(4, ' ')}",
-                        color = if (triple.second == "--") Color.Gray else Color.Green,
-                        fontFamily = FontFamily.Monospace
+                        y.padStart(4, ' '),
+                        color      = if (y == "--") TextSecondary else GreenAccent,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize   = 12.sp,
+                        fontWeight = if (y == "--") FontWeight.Normal else FontWeight.SemiBold,
+                        modifier   = Modifier.width(60.dp)
                     )
-
                     Text(
-                        text = "Z:${triple.third.padStart(4, ' ')}",
-                        color = if (triple.third == "--") Color.Gray else Color.Cyan,
-                        fontFamily = FontFamily.Monospace
+                        z.padStart(4, ' '),
+                        color      = if (z == "--") TextSecondary else BlueAccent,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize   = 12.sp,
+                        fontWeight = if (z == "--") FontWeight.Normal else FontWeight.SemiBold,
+                        modifier   = Modifier.width(60.dp)
+                    )
+                }
+                if (i < xyzPoints.size - 1) {
+                    Divider(
+                        color     = DividerDark.copy(alpha = 0.4f),
+                        thickness = 0.4.dp,
+                        modifier  = Modifier.padding(horizontal = 4.dp)
                     )
                 }
             }
@@ -2259,229 +1783,102 @@ fun DataLoggerXYZCard(packet: BluetoothScanViewModel.SensorData.DataLoggerData) 
     }
 }
 
-/**
- * Composable for displaying responsive data cards based on sensor type.
- * Arranges data cards in responsive layouts (1, 2, or grid).
- *
- * @param data List of (label, value) pairs to display
- * @param cardBackground Base card background color
- * @param advertisingText Localized text strings
- * @param textColor Text color based on theme
- */
-@Composable
-private fun ResponsiveDataCards(
-    data: List<Pair<String, String>>,
-    cardBackground: Color,
-    advertisingText: AdvertisingText,
-    textColor: Color
+// ══════════════════════════════════════════════════════════════════════════════
+// Helpers (logic identical to original)
+// ══════════════════════════════════════════════════════════════════════════════
+
+private fun dismissAlarm(
+    showAlertDialog: () -> Unit,
+    isAlarmActive: () -> Unit,
+    isThresholdSet: () -> Unit,
+    mediaPlayer: MediaPlayer?,
+    context: Context
 ) {
-    // Separate special data types
-    val ammoniaData = data.find { it.first.contains("Ammonia", ignoreCase = true) }
-    val rawData = data.find { it.first.contains("Raw Data", ignoreCase = true) }
-    val otherData = data.filterNot {
-        it.first.contains("Ammonia", ignoreCase = true) ||
-                it.first.contains("Reflectance", ignoreCase = true) ||
-                it.first.contains("Raw Data", ignoreCase = true)
-    }
+    showAlertDialog(); isAlarmActive(); isThresholdSet()
+    try { mediaPlayer?.stop(); mediaPlayer?.prepare() }
+    catch (_: IllegalStateException) { mediaPlayer?.reset() }
+}
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .systemBarsPadding(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Ammonia display with ring animation
-        ammoniaData?.let { (label, value) ->
-            Column(
-                modifier = Modifier.padding(vertical = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = label,
-                    fontSize = 18.sp,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                AmmoniaRingAnimation(
-                    ammoniaValue = value.replace(" ppm", "").toFloatOrNull() ?: 0f
-                )
+private fun parseTempLoggerRawDataIntoByteGroups(rawData: String?): List<List<String>> {
+    if (rawData.isNullOrBlank()) return createEmptyGroupsWithDashes()
+    try {
+        val bytes  = rawData.split(" ").filter { it.isNotBlank() }.map { it.trim() }.filter { it.isNotEmpty() }
+        val result = mutableListOf<List<String>>()
+        for (chunk in bytes.chunked(32)) {
+            if (chunk.all { it.equals("FF", ignoreCase = true) }) continue
+            val hasReal = chunk.any { it != "00" && !it.equals("FF", ignoreCase = true) && it.isNotEmpty() }
+            if (hasReal) {
+                val padded = chunk.toMutableList().apply { while (size < 32) add("00") }
+                result.add(padded.take(32))
+            } else {
+                result.add(List(32) { i -> if (i < chunk.size) { val b = chunk[i]; if (b.equals("FF", ignoreCase = true)) "--" else b } else "--" })
             }
+            if (result.size >= 7) break
         }
+        if (result.isEmpty()) return createEmptyGroupsWithDashes()
+        while (result.size < 7) result.add(List(32) { "--" })
+        return result.take(7)
+    } catch (_: Exception) { return createEmptyGroupsWithDashes() }
+}
 
-        // Raw data display
-        rawData?.let { (label, value) ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Raw Sensor Data",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+private fun createEmptyGroupsWithDashes(): List<List<String>> = List(7) { List(32) { "--" } }
 
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    color = cardBackground.copy(alpha = 0.7f)
-                ) {
-                    Text(
-                        text = value,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = textColor,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-            }
-        }
+private fun extractTempHumidityFromGroup(bytes: List<String>): Pair<String, String> {
+    if (bytes.size < 4 || bytes.any { it == "--" }) return "--" to "--"
+    return try {
+        val b1 = bytes[0].toIntOrNull(16) ?: 0; val b2 = bytes[1].toIntOrNull(16) ?: 0
+        val b3 = bytes[2].toIntOrNull(16) ?: 0; val b4 = bytes[3].toIntOrNull(16) ?: 0
+        val b2f = if (b2 == 0 && bytes[1] != "00") bytes[1].toIntOrNull(16) ?: 0 else b2
+        val b4f = if (b4 == 0 && bytes[3] != "00") bytes[3].toIntOrNull(16) ?: 0 else b4
+        "${String.format("%.2f", b1 + b2f / 100.0)}°C" to "${String.format("%.2f", b3 + b4f / 100.0)}%"
+    } catch (_: Exception) { "--" to "--" }
+}
 
-        // Responsive layout for regular data cards
-        when (otherData.size) {
-            0 -> Box(modifier = Modifier.height(100.dp))  // Empty space
-            1 -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                DataCard(
-                    label = otherData[0].first,
-                    value = otherData[0].second,
-                    cardBackground = cardBackground,
-                    advertisingText = advertisingText,
-                    textColor = textColor
-                )
-            }
-            2 -> Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                otherData.forEach { (label, value) ->
-                    DataCard(
-                        label = label,
-                        value = value,
-                        cardBackground = cardBackground,
-                        advertisingText = advertisingText,
-                        textColor = textColor
-                    )
-                }
-            }
-            else -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                otherData.chunked(2).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        rowItems.forEach { (label, value) ->
-                            DataCard(
-                                label = label,
-                                value = value,
-                                cardBackground = cardBackground,
-                                advertisingText = advertisingText,
-                                textColor = textColor
-                            )
+private fun exportDataToCSV(context: Context, uri: Uri, viewModel: BluetoothScanViewModel<Any>, deviceAddress: String, deviceName: String, deviceId: String, onComplete: () -> Unit) {
+    MainScope().launch {
+        withContext(Dispatchers.IO) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    var history = viewModel.getHistoricalDataForDevice(deviceAddress).toMutableList()
+                    if (history.isEmpty()) {
+                        viewModel.devices.value.find { it.address == deviceAddress }?.sensorData?.let {
+                            history.add(BluetoothScanViewModel.HistoricalDataEntry(System.currentTimeMillis(), it))
                         }
-                        // Add spacer if row has only one item
-                        if (rowItems.size == 1) Spacer(modifier = Modifier.width(141.dp))
+                    }
+                    if (history.isEmpty()) return@use
+                    val header = StringBuilder("Timestamp,Device Name,Device Address,Node ID,")
+                    when (history.first().sensorData) {
+                        is BluetoothScanViewModel.SensorData.SHT40Data         -> header.append("Temperature (°C),Humidity (%)")
+                        is BluetoothScanViewModel.SensorData.LIS2DHData        -> header.append("X-Axis (m/s²),Y-Axis (m/s²),Z-Axis (m/s²)")
+                        is BluetoothScanViewModel.SensorData.SoilSensorData    -> header.append("Nitrogen,Phosphorus,Potassium,Moisture (%),Temperature (°C),EC (mS/cm),pH,Salinity (mg/L)")
+                        is BluetoothScanViewModel.SensorData.LuxSensorData     -> header.append("Light Intensity (LUX)")
+                        is BluetoothScanViewModel.SensorData.SDTData           -> header.append("Speed (m/s),Distance (m)")
+                        is BluetoothScanViewModel.SensorData.AmmoniaSensorData -> header.append("Ammonia (ppm)")
+                        is BluetoothScanViewModel.SensorData.Sen66Data         -> header.append("PM1.0,PM2.5,PM4.0,PM10,Temperature,Humidity,CO₂,VOC,NOx,Air Quality")
+                        is BluetoothScanViewModel.SensorData.DataLoggerData    -> header.append("Total Stored Packets,First Packet ID,Accel Points,Timestamp,Raw Data")
+                        else -> {}
+                    }
+                    header.append("\n"); os.write(header.toString().toByteArray())
+                    val df = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+                    history.forEachIndexed { i, entry ->
+                        val row = StringBuilder("${df.format(Date(entry.timestamp))},$deviceName,$deviceAddress,$deviceId,")
+                        when (val sd = entry.sensorData) {
+                            is BluetoothScanViewModel.SensorData.SHT40Data         -> row.append("${sd.temperature},${sd.humidity}")
+                            is BluetoothScanViewModel.SensorData.LIS2DHData        -> row.append("${sd.x},${sd.y},${sd.z}")
+                            is BluetoothScanViewModel.SensorData.SoilSensorData    -> row.append("${sd.nitrogen},${sd.phosphorus},${sd.potassium},${sd.moisture},${sd.temperature},${sd.ec},${sd.pH},${sd.salinity}")
+                            is BluetoothScanViewModel.SensorData.LuxSensorData     -> row.append("${sd.lux}")
+                            is BluetoothScanViewModel.SensorData.SDTData           -> row.append("${sd.speed},${sd.distance}")
+                            is BluetoothScanViewModel.SensorData.AmmoniaSensorData -> row.append("${sd.ammonia}")
+                            is BluetoothScanViewModel.SensorData.Sen66Data         -> row.append("${sd.pm1},${sd.pm25},${sd.pm4},${sd.pm10},${sd.temperature},${sd.humidity},${sd.co2},${sd.voc},${sd.nox},${sd.airQualityIndex}")
+                            is BluetoothScanViewModel.SensorData.DataLoggerData    -> row.append("${sd.currentPacketId},${sd.lastPacketId},${sd.payloadAccel.size},${df.format(Date(sd.timestamp))},\"${sd.rawData.replace("\"", "\"\"")}\"")
+                            else -> {}
+                        }
+                        row.append("\n"); os.write(row.toString().toByteArray())
+                        if (i % 100 == 0) os.flush()
                     }
                 }
-            }
-        }
-    }
-}
-
-/**
- * Composable for individual data card with dynamic coloring based on value.
- * Shows sensor readings with color coding for thresholds.
- *
- * @param label Parameter name/label
- * @param value Parameter value with units
- * @param cardBackground Base card background color
- * @param advertisingText Localized text for comparison
- * @param textColor Text color
- */
-@Composable
-fun DataCard(
-    label: String,
-    value: String,
-    cardBackground: Color,
-    advertisingText: AdvertisingText,
-    textColor: Color
-) {
-    // Extract numeric value for color coding
-    val numericValue = value.replace("[^0-9.]".toRegex(), "").toFloatOrNull() ?: 0f
-
-    // Dynamic color based on parameter type and value
-    val dynamicColor = when {
-        label == advertisingText.temperature -> when {
-            numericValue <= 15f -> Color(0xFF2196F3)  // Blue (cold)
-            numericValue <= 30f -> Color(0xFF4CAF50)  // Green (comfortable)
-            else -> Color(0xFFF44336)                // Red (hot)
-        }
-        label == advertisingText.humidity -> when {
-            numericValue <= 40f -> Color(0xFF2196F3)  // Blue (dry)
-            numericValue <= 70f -> Color(0xFF4CAF50)  // Green (comfortable)
-            else -> Color(0xFFF44336)                // Red (humid)
-        }
-        else -> cardBackground
-    }
-
-    // Gradient for visual appeal
-    val cardGradient = Brush.verticalGradient(
-        colors = listOf(
-            dynamicColor.copy(alpha = 0.8f),
-            dynamicColor.copy(alpha = 0.6f)
-        )
-    )
-
-    Surface(
-        modifier = Modifier
-            .height(110.dp)
-            .width(141.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = dynamicColor,
-        tonalElevation = 8.dp
-    ) {
-        Box(
-            modifier = Modifier
-                .systemBarsPadding()
-                .background(cardGradient, RoundedCornerShape(16.dp))
-                .padding(12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = label,
-                    fontSize = 13.sp,
-                    color = textColor,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = value,
-                    fontSize = 16.sp,
-                    color = textColor,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 3,
-                    lineHeight = 20.sp
-                )
-            }
+            } catch (e: Exception) { e.printStackTrace() }
+            finally { withContext(Dispatchers.Main) { onComplete() } }
         }
     }
 }

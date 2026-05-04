@@ -6,282 +6,264 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontFamily.Companion.Monospace
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.colorResource
-import kotlinx.coroutines.delay
+import com.blesense.app.ui.theme.BleSenseColors
 
-// ---------------------------------------------------------------------
-//  ONE SINGLE Helvetica definition – replace with your real font if you have it
-// ---------------------------------------------------------------------
 @Composable
 fun AnimatedFirstScreen(
     onNavigateToLogin: () -> Unit,
     onNavigateToSignup: () -> Unit,
     onGuestSignIn: () -> Unit
 ) {
-    // ---- Theme -------------------------------------------------------
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-
-    // ---- Hard-coded English strings ----------------------------------
-    val appName           = "BLE Sense"
-    val loginText         = "Login"
-    val signUpText        = "Sign Up"
-    val orText            = "OR"
-    val continueAsGuest   = "Continue as Guest"
-
-    // ---- Colors -------------------------------------------------------
-    val backgroundColor      = if (isDarkMode) Color(0xFF121212) else Color.White
-    val shapeBackgroundColor = if (isDarkMode) Color(0xFF1E1E1E) else Color(0xFFD9EFFF)
-    val textColor            = if (isDarkMode) Color.White else Color.Black
-    val dividerColor         = if (isDarkMode) Color(0xFFB0B0B0) else Color.Gray
-    val buttonBgColor        = if (isDarkMode) Color(0xFFBB86FC) else colorResource(R.color.btnColor)
-    val buttonTextColor      = if (isDarkMode) Color.Black else Color.White
-    val loadingColor         = if (isDarkMode) Color(0xFFBB86FC) else colorResource(R.color.btnColor)
-
     // ---- Animations ---------------------------------------------------
     val backgroundScale = remember { Animatable(0f) }
     val iconAlpha       = remember { Animatable(0f) }
+    val iconTranslateY  = remember { Animatable(40f) }
     val textAlpha       = remember { Animatable(0f) }
+    val textTranslateY  = remember { Animatable(20f) }
     val buttonAlpha     = remember { Animatable(0f) }
+    val buttonTranslateY = remember { Animatable(20f) }
+    val glowPulse       = remember { Animatable(0.6f) }
 
     LaunchedEffect(Unit) {
-        backgroundScale.animateTo(1f, tween(800, easing = FastOutSlowInEasing))
-        iconAlpha.animateTo(1f, tween(500, easing = LinearEasing))
-        textAlpha.animateTo(1f, tween(500, easing = LinearEasing))
-        buttonAlpha.animateTo(1f, tween(500, easing = LinearEasing))
+        backgroundScale.animateTo(1f, tween(900, easing = FastOutSlowInEasing))
+        iconAlpha.animateTo(1f, tween(500))
+        iconTranslateY.animateTo(0f, tween(600, easing = FastOutSlowInEasing))
+        textAlpha.animateTo(1f, tween(400))
+        textTranslateY.animateTo(0f, tween(500, easing = FastOutSlowInEasing))
+        buttonAlpha.animateTo(1f, tween(400))
+        buttonTranslateY.animateTo(0f, tween(500, easing = FastOutSlowInEasing))
+    }
+
+    // Pulsing glow for the icon
+    LaunchedEffect(Unit) {
+        glowPulse.animateTo(
+            1f,
+            infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Reverse)
+        )
     }
 
     var isLoading by remember { mutableStateOf(false) }
 
-    // -----------------------------------------------------------------
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundColor)
+            .background(BleSenseColors.BackgroundDark)
+            .systemBarsPadding()
     ) {
-        // ---- Animated background shape --------------------------------
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = backgroundScale.value,
-                    scaleY = backgroundScale.value,
-                    transformOrigin = TransformOrigin(0f, 1f)
-                )
-                .clip(GenericShape { size, _ ->
-                    val path = Path().apply {
-                        moveTo(0f, size.height * 0.9f)
-                        quadraticBezierTo(
-                            size.width * 0.1f, size.height * 0.62f,
-                            size.width * 0.55f, size.height * 0.55f
-                        )
-                        quadraticBezierTo(
-                            size.width * 1f, size.height * 0.47f,
-                            size.width, size.height * 0.4f
-                        )
-                        lineTo(size.width, 0f)
-                        lineTo(0f, 0f)
-                        close()
-                    }
-                    addPath(path)
-                })
-                .background(shapeBackgroundColor)
-        )
-
-        // ---- Main content ------------------------------------------------
+        // ---- Main content -----------------------------------------------
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // ---- Icon ----------------------------------------------------
-            Image(
-                painter = painterResource(id = R.drawable.bg_remove_ble),
-                contentDescription = "App Icon",
-                modifier = Modifier
-                    .size(200.dp)
-                    .alpha(iconAlpha.value)
-            )
 
-            // ---- App name ------------------------------------------------
-            Text(
-                text = appName,
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = helveticaFont,
-                color = textColor,
-                modifier = Modifier
-                    .alpha(textAlpha.value)
-                    .padding(bottom = 140.dp)
-            )
+            Spacer(modifier = Modifier.weight(1f))
 
-            Spacer(modifier = Modifier.height(80.dp))
-
-            // ---- Login button --------------------------------------------
-            Button(
-                onClick = onNavigateToLogin,
+            // ---- Icon with glowing ring ---------------------------------
+            Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .fillMaxWidth(0.6f)
-                    .alpha(buttonAlpha.value)
-                    .padding(vertical = 8.dp)
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(backgroundColor = buttonBgColor),
-                elevation = ButtonDefaults.elevation(defaultElevation = 8.dp)
+                    .graphicsLayer(
+                        alpha = iconAlpha.value,
+                        translationY = iconTranslateY.value
+                    )
             ) {
-                Text(
-                    text = loginText,
-                    fontSize = 18.sp,
-                    color = buttonTextColor,
-                    fontFamily = helveticaFont,
-                    fontWeight = FontWeight.SemiBold
+                // Outer glow ring
+                Box(
+                    modifier = Modifier
+                        .size((160 * glowPulse.value).dp)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    BleSenseColors.PrimaryGreen.copy(alpha = 0.12f * glowPulse.value),
+                                    Color.Transparent
+                                )
+                            )
+                        )
                 )
+                // Icon container
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(BleSenseColors.PrimaryGreenDark.copy(alpha = 0.4f))
+                        .border(
+                            1.dp,
+                            BleSenseColors.PrimaryGreen.copy(alpha = 0.3f),
+                            RoundedCornerShape(28.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.bg_remove_ble),
+                        contentDescription = "BLE Sense icon",
+                        modifier = Modifier.size(60.dp)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // ---- Sign-up button ------------------------------------------
-            Button(
-                onClick = onNavigateToSignup,
-                modifier = Modifier
-                    .fillMaxWidth(0.6f)
-                    .alpha(buttonAlpha.value)
-                    .padding(vertical = 8.dp)
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(backgroundColor = buttonBgColor),
-                elevation = ButtonDefaults.elevation(defaultElevation = 8.dp)
+            // ---- App name + tagline ------------------------------------
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.graphicsLayer(
+                    alpha = textAlpha.value,
+                    translationY = textTranslateY.value
+                )
             ) {
                 Text(
-                    text = signUpText,
-                    fontSize = 18.sp,
-                    color = buttonTextColor,
-                    fontFamily = helveticaFont,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // ---- OR divider -----------------------------------------------
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(0.6f)
-                    .alpha(buttonAlpha.value),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Divider(
-                    modifier = Modifier
-                        .weight(1f)
-                        .alpha(0.5f),
-                    color = dividerColor,
-                    thickness = 1.dp
-                )
-                Text(
-                    text = "  $orText  ",
-                    color = dividerColor,
-                    fontSize = 14.sp,
-                    fontFamily = helveticaFont,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-                Divider(
-                    modifier = Modifier
-                        .weight(1f)
-                        .alpha(0.5f),
-                    color = dividerColor,
-                    thickness = 1.dp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // ---- Guest / Loading -----------------------------------------
-            if (isLoading) {
-                LoadingAnimation(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .alpha(buttonAlpha.value),
-                    color = loadingColor
-                )
-            } else {
-                Text(
-                    text = continueAsGuest,
-                    fontSize = 16.sp,
-                    color = textColor,
-                    fontFamily = helveticaFont,
+                    text = "BleSense",
+                    fontSize = 38.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = Monospace,
+                    color = BleSenseColors.TextPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Seamless sensor control",
+                    fontSize = 15.sp,
+                    fontFamily = Monospace,
+                    color = BleSenseColors.PrimaryGreen,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Monitor and manage all your BLE sensors with ease.",
+                    fontSize = 13.sp,
+                    fontFamily = Monospace,
+                    color = BleSenseColors.TextSecondary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // ---- Buttons -----------------------------------------------
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer(
+                        alpha = buttonAlpha.value,
+                        translationY = buttonTranslateY.value
+                    ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Login button (filled green)
+                Button(
+                    onClick = onNavigateToLogin,
                     modifier = Modifier
-                        .alpha(buttonAlpha.value)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BleSenseColors.PrimaryGreenDark
+                    ),
+                    border = BorderStroke(1.dp, BleSenseColors.PrimaryGreen.copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = "Login",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = Monospace,
+                        color = BleSenseColors.TextPrimary
+                    )
+                }
+
+                // Sign up button (outlined)
+                OutlinedButton(
+                    onClick = onNavigateToSignup,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, BleSenseColors.SurfaceLight),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = BleSenseColors.SurfaceDark
+                    )
+                ) {
+                    Text(
+                        text = "Sign Up",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = Monospace,
+                        color = BleSenseColors.TextPrimary
+                    )
+                }
+
+                // Divider
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(
+                        modifier = Modifier.weight(1f),
+                        color = BleSenseColors.SurfaceLight
+                    )
+                    Text(
+                        text = "  OR  ",
+                        color = BleSenseColors.TextTertiary,
+                        fontSize = 12.sp,
+                        fontFamily = Monospace
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.weight(1f),
+                        color = BleSenseColors.SurfaceLight
+                    )
+                }
+
+                // Continue as Guest
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            color = BleSenseColors.PrimaryGreen,
+                            strokeWidth = 2.5.dp
+                        )
+                    }
+                } else {
+                    TextButton(
+                        onClick = {
                             isLoading = true
                             onGuestSignIn()
-                        }
-                        .padding(vertical = 8.dp)
-                )
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------
-//  Loading animation (unchanged)
-// ---------------------------------------------------------------------
-@Composable
-fun LoadingAnimation(
-    modifier: Modifier = Modifier,
-    color: Color
-) {
-    val infinite = rememberInfiniteTransition()
-    val rotation by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-    val scale by infinite.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(
-            modifier = Modifier
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    rotationZ = rotation
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Continue as Guest",
+                            fontSize = 15.sp,
+                            fontFamily = Monospace,
+                            fontWeight = FontWeight.Medium,
+                            color = BleSenseColors.TextSecondary
+                        )
+                    }
                 }
-                .size(32.dp),
-            color = color,
-            strokeWidth = 3.dp
-        )
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+        }
     }
 }

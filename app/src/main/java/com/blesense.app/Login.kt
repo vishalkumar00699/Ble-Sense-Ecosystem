@@ -2,90 +2,77 @@
 
 package com.blesense.app
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.delay
 
-// Define custom Helvetica font family for consistent typography
-val helveticaFont = FontFamily(
-    Font(R.font.helvetica),
-    Font(R.font.helvetica_bold, weight = FontWeight.Bold)
-)
+import com.blesense.app.ui.theme.BleSenseColors
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 
-// Object to store app-specific colors for theming
-object AppColors {
-    val PrimaryColor = Color(0xFF007AFF)
-    val TextFieldBackgroundColor = Color(0xFFFFFFFF)
-    val SecondaryTextColor = Color(0xFF8E8E93)
-}
-
-// Main composable for the login screen
 @Composable
-fun LoginScreen(
+fun BleSenseLoginScreen(
     viewModel: AuthViewModel,
     onNavigateToRegister: () -> Unit,
     onNavigateToHome: () -> Unit
 ) {
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-
-    // Theme-based colors
-    val backgroundColor = if (isDarkMode) Color(0xFF121212) else Color.White
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    val secondaryTextColor = if (isDarkMode) Color(0xFFB0B0B0) else AppColors.SecondaryTextColor
-    val textFieldBackgroundColor = if (isDarkMode) Color(0xFF1E1E1E) else AppColors.TextFieldBackgroundColor
-    val buttonBackgroundColor = if (isDarkMode) Color(0xFFBB86FC) else AppColors.PrimaryColor
-    val buttonTextColor = if (isDarkMode) Color.Black else Color.White
-    val dividerColor = if (isDarkMode) Color(0xFFB0B0B0) else Color.LightGray
-    val borderColor = if (isDarkMode) Color(0xFFB0B0B0) else Color.LightGray
-    val errorColor = if (isDarkMode) Color(0xFFCF6679) else MaterialTheme.colorScheme.error
-    val dialogBackgroundColor = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
-
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var forgotPasswordEmail by remember { mutableStateOf("") }
-    var showForgotPasswordDialog by remember { mutableStateOf(false) }
     var showErrorDialog by remember { mutableStateOf(false) }
-
-    val isFormValid by remember(email, password) {
-        derivedStateOf { isValidEmail(email) && isValidPassword(password) }
-    }
+    var isScanning by remember { mutableStateOf(false) }
 
     val authState by viewModel.authState.collectAsState()
     val context = LocalContext.current
+
+    // Animated scanning effect
+    LaunchedEffect(Unit) {
+        isScanning = true
+    }
+
+    val isFormValid by remember(email, password) {
+        derivedStateOf { email.isNotBlank() && password.length >= 6 }
+    }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -96,12 +83,9 @@ fun LoginScreen(
                 val account = task.getResult(ApiException::class.java)
                 account.idToken?.let { viewModel.signInWithGoogle(it) }
             } catch (e: ApiException) {
-                errorMessage = "Google Sign-In failed: ${e.statusCode} - ${e.message}"
+                errorMessage = "Google Sign-In failed"
                 showErrorDialog = true
             }
-        } else {
-            errorMessage = "Google Sign-In cancelled"
-            showErrorDialog = true
         }
     }
 
@@ -110,17 +94,7 @@ fun LoginScreen(
         viewModel.setGoogleSignInClient(googleSignInClient)
     }
 
-    if (authState is AuthState.Loading) {
-        LoadingDialog(onDismissRequest = {})
-    }
-
-    errorMessage?.let { error ->
-        LaunchedEffect(error) {
-            delay(5000)
-            errorMessage = null
-        }
-    }
-
+    // Handle auth states
     LaunchedEffect(authState) {
         when (authState) {
             is AuthState.Success -> onNavigateToHome()
@@ -128,204 +102,455 @@ fun LoginScreen(
                 errorMessage = (authState as AuthState.Error).message
                 showErrorDialog = true
             }
-            is AuthState.PasswordResetEmailSent -> {
-                showForgotPasswordDialog = false
-                errorMessage = "Password reset email sent! Please check your inbox."
-                showErrorDialog = true
-            }
             else -> {}
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundColor)
-            .padding(horizontal = 24.dp)
-            .systemBarsPadding(),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(BleSenseColors.BackgroundDark)
     ) {
-        Spacer(modifier = Modifier.height(60.dp))
-
-        Text(
-            text = "Welcome Back",
-            style = TextStyle(
-                fontSize = 34.sp,
-                fontFamily = helveticaFont,
-                fontWeight = FontWeight.Bold,
-                color = textColor
-            ),
-            textAlign = TextAlign.Center
-        )
-
-        Text(
-            text = "Sign in to continue",
-            style = TextStyle(
-                fontSize = 17.sp,
-                color = secondaryTextColor,
-                fontFamily = helveticaFont,
-                fontWeight = FontWeight.Bold
-            ),
-            modifier = Modifier.padding(top = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.height(90.dp))
-
-        EmailTextField(
-            email = email,
-            onEmailChange = {
-                email = it
-                errorMessage = null
-            },
-            isError = !isValidEmail(email) && email.isNotEmpty(),
+        // Background gradient effect
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            placeholder = "Email",
-            invalidMessage = "Please enter a valid email address",
-            backgroundColor = textFieldBackgroundColor,
-            textColor = textColor,
-            borderColor = borderColor,
-            errorColor = errorColor,
-            buttonBackgroundColor = buttonBackgroundColor
-        )
-
-        PasswordTextField(
-            password = password,
-            onPasswordChange = {
-                password = it
-                errorMessage = null
-            },
-            passwordVisible = passwordVisible,
-            onPasswordVisibilityChange = { passwordVisible = it },
-            isError = !isValidPassword(password) && password.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = "Password",
-            invalidMessage = "Password must be at least 8 characters",
-            backgroundColor = textFieldBackgroundColor,
-            textColor = textColor,
-            borderColor = borderColor,
-            errorColor = errorColor,
-            buttonBackgroundColor = buttonBackgroundColor
-        )
-
-        TextButton(
-            onClick = { showForgotPasswordDialog = true },
-            modifier = Modifier
-                .align(Alignment.End)
-                .padding(top = 8.dp)
-        ) {
-            Text(
-                text = "Forgot Password?",
-                style = TextStyle(
-                    fontSize = 15.sp,
-                    color = buttonBackgroundColor,
-                    fontFamily = helveticaFont,
-                    fontWeight = FontWeight.SemiBold
+                .fillMaxSize()
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            BleSenseColors.PrimaryGreen.copy(alpha = 0.08f),
+                            Color.Transparent,
+                            Color.Transparent
+                        ),
+                        radius = 800f,
+                        center = Offset(300f, 200f)
+                    )
                 )
-            )
-        }
+        )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        // Animated floating particles
+        FloatingParticles()
 
-        Button(
-            onClick = {
-                if (isFormValid) {
-                    viewModel.loginUser(email.trim(), password)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 20.dp)
+        ) {
+            // Top bar with scanning status
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Logo circle
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(BleSenseColors.PrimaryGreen.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bluetooth,
+                            contentDescription = "Logo",
+                            tint = BleSenseColors.PrimaryGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Text(
+                        text = "BleSense",
+                        color = BleSenseColors.TextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    )
                 }
-            },
-            enabled = isFormValid && authState !is AuthState.Loading,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = buttonBackgroundColor,
-                disabledContainerColor = buttonBackgroundColor.copy(alpha = 0.7f)
-            ),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            if (authState is AuthState.Loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = buttonTextColor
+
+                // Scanning status indicator
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = BleSenseColors.SurfaceDark,
+                    modifier = Modifier
+                        .height(32.dp)
+                        .wrapContentWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Scanning",
+                            tint = BleSenseColors.PrimaryGreen,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "Scanning",
+                            color = BleSenseColors.TextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(BleSenseColors.PrimaryGreen)
+                                .animateContentSize()
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Hero image area
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(20.dp))
+            ) {
+                // Placeholder for hero image - replace with your actual image resource
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    BleSenseColors.PrimaryGreen.copy(alpha = 0.15f),
+                                    BleSenseColors.PrimaryGreen.copy(alpha = 0.05f)
+                                )
+                            )
+                        )
                 )
-            } else {
-                Text(
-                    text = "Sign In",
-                    color = buttonTextColor,
-                    style = TextStyle(
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = helveticaFont
+
+                // Gradient overlay
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    BleSenseColors.BackgroundDark.copy(alpha = 0.8f)
+                                ),
+                                startY = 100f
+                            )
+                        )
+                )
+
+                // Text overlay
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Seamless",
+                        color = BleSenseColors.TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Light
                     )
+                    Text(
+                        text = "sensor control",
+                        color = BleSenseColors.PrimaryGreen,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Monitor and manage all your BLE sensors with ease.",
+                        color = BleSenseColors.TextSecondary,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Status cards
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StatusCard(
+                    icon = Icons.Default.Wifi,
+                    label = "Status",
+                    value = "Ready",
+                    iconColor = BleSenseColors.PrimaryGreen
+                )
+
+                StatusCard(
+                    icon = Icons.Default.Add,
+                    label = "New",
+                    value = "Sign Up",
+                    iconColor = BleSenseColors.TextPrimary
                 )
             }
-        }
 
-        Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            HorizontalDivider(modifier = Modifier.weight(1f), color = dividerColor)
-            Text(
-                text = "Or continue with",
-                modifier = Modifier.padding(horizontal = 16.dp),
-                style = TextStyle(
-                    fontSize = 15.sp,
-                    color = secondaryTextColor,
-                    fontFamily = helveticaFont,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-            HorizontalDivider(modifier = Modifier.weight(1f), color = dividerColor)
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            SocialLoginButton(
-                icon = R.drawable.google_g,
-                onClick = { launcher.launch(googleSignInClient.signInIntent) },
-                backgroundColor = textFieldBackgroundColor,
-                borderColor = borderColor
-            )
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Row(
-            modifier = Modifier.padding(bottom = 32.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Don't have an account?",
-                style = TextStyle(
-                    fontSize = 15.sp,
-                    color = textColor,
-                    fontFamily = helveticaFont,
-                    fontWeight = FontWeight.SemiBold
-                )
-            )
-            TextButton(onClick = onNavigateToRegister) {
-                Text(
-                    text = "Register Now",
-                    style = TextStyle(
-                        fontSize = 15.sp,
-                        color = buttonBackgroundColor,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = helveticaFont
+            // Login form card
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = BleSenseColors.SurfaceDark,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Text(
+                        text = "Welcome Back",
+                        color = BleSenseColors.TextPrimary,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold
                     )
+
+                    Text(
+                        text = "Sign in to continue",
+                        color = BleSenseColors.TextSecondary,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Email field
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        placeholder = {
+                            Text("Email address", color = BleSenseColors.TextTertiary)
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = null,
+                                tint = BleSenseColors.PrimaryGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = BleSenseColors.PrimaryGreen,
+                            unfocusedBorderColor = BleSenseColors.SurfaceLight,
+                            focusedTextColor = BleSenseColors.TextPrimary,
+                            unfocusedTextColor = BleSenseColors.TextPrimary,
+                            cursorColor = BleSenseColors.PrimaryGreen
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Next
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Password field
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        placeholder = {
+                            Text("Password", color = BleSenseColors.TextTertiary)
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = BleSenseColors.PrimaryGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { passwordVisible = !passwordVisible },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                    tint = BleSenseColors.TextTertiary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        },
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = BleSenseColors.PrimaryGreen,
+                            unfocusedBorderColor = BleSenseColors.SurfaceLight,
+                            focusedTextColor = BleSenseColors.TextPrimary,
+                            unfocusedTextColor = BleSenseColors.TextPrimary,
+                            cursorColor = BleSenseColors.PrimaryGreen
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done
+                        )
+                    )
+
+                    // Forgot password
+                    TextButton(
+                        onClick = { /* Handle forgot password */ },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(
+                            text = "Forgot Password?",
+                            color = BleSenseColors.PrimaryGreen,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Login button
+                    Button(
+                        onClick = {
+                            if (isFormValid) {
+                                viewModel.loginUser(email.trim(), password)
+                            }
+                        },
+                        enabled = isFormValid && authState !is AuthState.Loading,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BleSenseColors.PrimaryGreen,
+                            disabledContainerColor = BleSenseColors.PrimaryGreen.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        if (authState is AuthState.Loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = BleSenseColors.BackgroundDark,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(
+                                text = "Sign In",
+                                color = BleSenseColors.BackgroundDark,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // Divider
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalDivider(
+                            modifier = Modifier.weight(1f),
+                            color = BleSenseColors.SurfaceLight,
+                            thickness = 1.dp
+                        )
+                        Text(
+                            text = "Or continue with",
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = BleSenseColors.TextTertiary,
+                            fontSize = 13.sp
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.weight(1f),
+                            color = BleSenseColors.SurfaceLight,
+                            thickness = 1.dp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Social login buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        SocialButton(
+                            icon = R.drawable.google_g,
+                            onClick = { launcher.launch(googleSignInClient.signInIntent) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Sign up link
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Don't have an account? ",
+                            color = BleSenseColors.TextSecondary,
+                            fontSize = 14.sp
+                        )
+                        TextButton(
+                            onClick = onNavigateToRegister,
+                            modifier = Modifier.padding(0.dp)
+                        ) {
+                            Text(
+                                text = "Register Now",
+                                color = BleSenseColors.PrimaryGreen,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Navigation tiles
+            Text(
+                text = "Quick Access",
+                color = BleSenseColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                NavigationTile(
+                    icon = Icons.Default.Bluetooth,
+                    title = "Bluetooth",
+                    subtitle = "Scan & Connect",
+                    iconColor = BleSenseColors.BluetoothBlue
+                )
+
+                NavigationTile(
+                    icon = Icons.Default.Storage,
+                    title = "Data Logger",
+                    subtitle = "Record & Export",
+                    iconColor = BleSenseColors.PrimaryGreen
                 )
             }
+
+            Spacer(modifier = Modifier.height(80.dp))
         }
 
+        // Error dialog
         if (showErrorDialog && errorMessage != null) {
             AlertDialog(
                 onDismissRequest = {
@@ -335,22 +560,16 @@ fun LoginScreen(
                 title = {
                     Text(
                         text = "Error",
-                        style = TextStyle(
-                            fontSize = 20.sp,
-                            fontFamily = helveticaFont,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
+                        color = BleSenseColors.TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 },
                 text = {
                     Text(
-                        text = errorMessage ?: "An unknown error occurred",
-                        style = TextStyle(
-                            fontSize = 16.sp,
-                            fontFamily = helveticaFont,
-                            color = textColor
-                        )
+                        text = errorMessage ?: "An error occurred",
+                        color = BleSenseColors.TextSecondary,
+                        fontSize = 14.sp
                     )
                 },
                 confirmButton = {
@@ -359,215 +578,157 @@ fun LoginScreen(
                             showErrorDialog = false
                             errorMessage = null
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = buttonBackgroundColor)
-                    ) {
-                        Text("OK", color = buttonTextColor)
-                    }
-                },
-                containerColor = dialogBackgroundColor
-            )
-        }
-
-        if (showForgotPasswordDialog) {
-            AlertDialog(
-                onDismissRequest = { showForgotPasswordDialog = false },
-                title = {
-                    Text(
-                        text = "Reset Password",
-                        style = TextStyle(
-                            fontSize = 20.sp,
-                            fontFamily = helveticaFont,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
-                    )
-                },
-                text = {
-                    Column {
-                        Text(
-                            text = "Enter your email address and we'll send you a link to reset your password.",
-                            style = TextStyle(
-                                fontSize = 16.sp,
-                                fontFamily = helveticaFont,
-                                color = textColor
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        TextField(
-                            value = forgotPasswordEmail,
-                            onValueChange = { forgotPasswordEmail = it },
-                            placeholder = { Text("Email", color = secondaryTextColor) },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Email,
-                                imeAction = ImeAction.Done
-                            ),
-                            colors = TextFieldDefaults.textFieldColors(
-                                containerColor = textFieldBackgroundColor,
-                                unfocusedIndicatorColor = borderColor,
-                                focusedIndicatorColor = buttonBackgroundColor,
-                                focusedTextColor = textColor,
-                                unfocusedTextColor = textColor
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            textStyle = TextStyle(fontSize = 17.sp, fontFamily = helveticaFont, color = textColor)
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (isValidEmail(forgotPasswordEmail)) {
-                                viewModel.sendPasswordResetEmail(forgotPasswordEmail.trim())
-                            }
-                        },
-                        enabled = isValidEmail(forgotPasswordEmail),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = buttonBackgroundColor,
-                            disabledContainerColor = buttonBackgroundColor.copy(alpha = 0.7f)
-                        )
+                            containerColor = BleSenseColors.PrimaryGreen
+                        ),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Send Reset Link", color = buttonTextColor)
+                        Text("OK", color = BleSenseColors.BackgroundDark)
                     }
                 },
-                dismissButton = {
-                    TextButton(onClick = { showForgotPasswordDialog = false }) {
-                        Text("Cancel", color = buttonBackgroundColor)
-                    }
-                },
-                containerColor = dialogBackgroundColor
+                containerColor = BleSenseColors.SurfaceDark,
+                shape = RoundedCornerShape(16.dp)
             )
         }
     }
 }
 
-// Social login button
 @Composable
-fun SocialLoginButton(
-    icon: Int,
-    onClick: () -> Unit,
-    backgroundColor: Color,
-    borderColor: Color
+fun RowScope.StatusCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    iconColor: Color
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier.size(64.dp),
+    Surface(
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = backgroundColor),
-        border = BorderStroke(1.dp, borderColor),
-        contentPadding = PaddingValues(12.dp)
+        color = BleSenseColors.SurfaceDark,
+        modifier = Modifier.weight(1f)
     ) {
-        Icon(
-            painter = painterResource(id = icon),
-            contentDescription = null,
-            modifier = Modifier.size(32.dp),
-            tint = Color.Unspecified
-        )
-    }
-}
-
-// Email text field
-@Composable
-private fun EmailTextField(
-    email: String,
-    onEmailChange: (String) -> Unit,
-    isError: Boolean,
-    modifier: Modifier = Modifier,
-    placeholder: String,
-    invalidMessage: String,
-    backgroundColor: Color,
-    textColor: Color,
-    borderColor: Color,
-    errorColor: Color,
-    buttonBackgroundColor: Color
-) {
-    TextField(
-        value = email,
-        onValueChange = onEmailChange,
-        modifier = modifier,
-        placeholder = { Text(placeholder, color = borderColor) },
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Email,
-            imeAction = ImeAction.Next
-        ),
-        isError = isError,
-        supportingText = { if (isError) Text(invalidMessage, color = errorColor) },
-        colors = TextFieldDefaults.textFieldColors(
-            containerColor = backgroundColor,
-            unfocusedIndicatorColor = borderColor,
-            focusedIndicatorColor = buttonBackgroundColor,
-            errorIndicatorColor = errorColor,
-            focusedTextColor = textColor,
-            unfocusedTextColor = textColor
-        ),
-        shape = RoundedCornerShape(12.dp),
-        textStyle = TextStyle(fontSize = 17.sp, fontFamily = helveticaFont, color = textColor)
-    )
-}
-
-// Password text field with visibility toggle
-@Composable
-private fun PasswordTextField(
-    password: String,
-    onPasswordChange: (String) -> Unit,
-    passwordVisible: Boolean,
-    onPasswordVisibilityChange: (Boolean) -> Unit,
-    isError: Boolean,
-    modifier: Modifier = Modifier,
-    placeholder: String,
-    invalidMessage: String,
-    backgroundColor: Color,
-    textColor: Color,
-    borderColor: Color,
-    errorColor: Color,
-    buttonBackgroundColor: Color
-) {
-    TextField(
-        value = password,
-        onValueChange = onPasswordChange,
-        modifier = modifier,
-        placeholder = { Text(placeholder, color = borderColor) },
-        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Password,
-            imeAction = ImeAction.Done
-        ),
-        isError = isError,
-        supportingText = { if (isError) Text(invalidMessage, color = errorColor) },
-        trailingIcon = {
-            IconButton(onClick = { onPasswordVisibilityChange(!passwordVisible) }, modifier = Modifier.size(24.dp)) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(iconColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
-                    painter = painterResource(id = if (passwordVisible) R.drawable.invisible else R.drawable.show),
-                    contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                    tint = Color.Unspecified
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(18.dp)
                 )
             }
-        },
-        colors = TextFieldDefaults.textFieldColors(
-            containerColor = backgroundColor,
-            unfocusedIndicatorColor = borderColor,
-            focusedIndicatorColor = buttonBackgroundColor,
-            errorIndicatorColor = errorColor,
-            focusedTextColor = textColor,
-            unfocusedTextColor = textColor
-        ),
+
+            Column {
+                Text(
+                    text = label,
+                    color = BleSenseColors.TextTertiary,
+                    fontSize = 11.sp
+                )
+                Text(
+                    text = value,
+                    color = BleSenseColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RowScope.NavigationTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    iconColor: Color
+) {
+    Surface(
         shape = RoundedCornerShape(12.dp),
-        textStyle = TextStyle(fontSize = 17.sp, fontFamily = helveticaFont, color = textColor)
-    )
+        color = BleSenseColors.SurfaceDark,
+        modifier = Modifier.weight(1f)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(iconColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = title,
+                color = BleSenseColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = subtitle,
+                color = BleSenseColors.TextTertiary,
+                fontSize = 11.sp
+            )
+        }
+    }
 }
 
-// Validation helpers
-private fun isValidEmail(email: String): Boolean {
-    return email.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
+@Composable
+fun SocialButton(
+    icon: Int,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = BleSenseColors.SurfaceLight,
+        modifier = Modifier.size(56.dp),
+        onClick = onClick
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(id = icon),
+                contentDescription = "Social login",
+                tint = Color.Unspecified,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
 }
 
-private fun isValidPassword(password: String): Boolean {
-    return password.length >= 8
+@Composable
+fun FloatingParticles() {
+    // Simplified particle effect - you can expand this for more visual interest
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Add animated particles here if desired
+    }
 }
 
 // Preview
-@Preview(showBackground = true)
+@SuppressLint("ViewModelConstructorInComposable")
+@Preview(showBackground = true, showSystemUi = true)
 @Composable
-fun LoginScreenPreview() {
-    LoginScreen(onNavigateToRegister = {}, onNavigateToHome = {}, viewModel = AuthViewModel())
+fun BleSenseLoginScreenPreview() {
+    MaterialTheme {
+        BleSenseLoginScreen(
+            viewModel = AuthViewModel(),
+            onNavigateToRegister = {},
+            onNavigateToHome = {}
+        )
+    }
 }

@@ -29,12 +29,10 @@ import androidx.compose.ui.window.DialogProperties
 // Composable for displaying a loading dialog with animated arcs
 @Composable
 fun LoadingDialog(onDismissRequest: () -> Unit) {
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-
     // Theme-based colors
-    val dialogBackgroundColor = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    val primaryColor = if (isDarkMode) Color(0xFFBB86FC) else MaterialTheme.colorScheme.primary
+    val dialogBackgroundColor = com.blesense.app.ui.theme.BleSenseColors.SurfaceDark
+    val textColor = com.blesense.app.ui.theme.BleSenseColors.TextPrimary
+    val primaryColor = com.blesense.app.ui.theme.BleSenseColors.PrimaryGreen
 
     Dialog(
         onDismissRequest = onDismissRequest,

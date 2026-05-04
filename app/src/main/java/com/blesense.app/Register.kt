@@ -30,6 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import androidx.compose.ui.text.font.FontFamily
+
+// Fix unresolved reference for font
+val helveticaFont = FontFamily.SansSerif
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,17 +43,17 @@ fun RegisterScreen(
     onNavigateToHome: () -> Unit
 ) {
     // Theme state only
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState()
+
 
     // Theme-based colors
-    val backgroundColor = if (isDarkMode) Color(0xFF121212) else Color.White
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    val secondaryTextColor = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF8E8E93)
-    val textFieldBackgroundColor = if (isDarkMode) Color(0xFF1E1E1E) else Color(0xFFFFFFFF)
-    val buttonBackgroundColor = if (isDarkMode) Color(0xFFBB86FC) else Color(0xFF007AFF)
-    val buttonTextColor = if (isDarkMode) Color.Black else Color.White
-    val dividerColor = if (isDarkMode) Color(0xFFB0B0B0) else Color.LightGray
-    val borderColor = if (isDarkMode) Color(0xFFB0B0B0) else Color.LightGray
+    val backgroundColor = com.blesense.app.ui.theme.BleSenseColors.BackgroundDark
+    val textColor = com.blesense.app.ui.theme.BleSenseColors.TextPrimary
+    val secondaryTextColor = com.blesense.app.ui.theme.BleSenseColors.TextSecondary
+    val textFieldBackgroundColor = com.blesense.app.ui.theme.BleSenseColors.SurfaceDark
+    val buttonBackgroundColor = com.blesense.app.ui.theme.BleSenseColors.PrimaryGreen
+    val buttonTextColor = com.blesense.app.ui.theme.BleSenseColors.BackgroundDark
+    val dividerColor = com.blesense.app.ui.theme.BleSenseColors.SurfaceLight
+    val borderColor = com.blesense.app.ui.theme.BleSenseColors.SurfaceLight
 
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -125,7 +129,7 @@ fun RegisterScreen(
                 }
             },
             confirmButton = { },
-            containerColor = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
+            containerColor = com.blesense.app.ui.theme.BleSenseColors.SurfaceDark
         )
     }
 
@@ -366,11 +370,9 @@ fun RegisterScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            SocialLoginButton(
+            SocialButton(
                 icon = R.drawable.google_g,
-                onClick = { launcher.launch(googleSignInClient.signInIntent) },
-                backgroundColor = textFieldBackgroundColor,
-                borderColor = borderColor
+                onClick = { launcher.launch(googleSignInClient.signInIntent) }
             )
         }
 

@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily.Companion.Monospace
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -35,13 +36,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import com.blesense.app.ui.theme.BleSenseColors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.random.Random
 
 // Singleton object to manage app-wide theme state
 object ThemeManager {
-    private val _isDarkMode = MutableStateFlow(false)
+    private val _isDarkMode = MutableStateFlow(true)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode
 
     private var isInitialized = false
@@ -66,14 +68,15 @@ fun ModernSettingsScreen(
     onSignOut: () -> Unit,
     navController: NavHostController
 ) {
+
     val isDarkMode by ThemeManager.isDarkMode.collectAsState()
 
-    val backgroundColor = if (isDarkMode) Color(0xFF121212) else Color(0xFFF2F2F7)
-    val cardBackground = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    val secondaryTextColor = if (isDarkMode) Color(0xFFB0B0B0) else Color.Gray
-    val dividerColor = if (isDarkMode) Color(0xFF2A2A2A) else Color(0xFFE0E0E0)
-    val iconTint = if (isDarkMode) Color(0xFF64B5F6) else Color(0xFF007AFF)
+    val backgroundColor = BleSenseColors.BackgroundDark
+    val cardBackground = BleSenseColors.SurfaceDark
+    val textColor = BleSenseColors.TextPrimary
+    val secondaryTextColor = BleSenseColors.TextSecondary
+    val dividerColor = BleSenseColors.SurfaceLight
+    val iconTint = BleSenseColors.PrimaryGreen
 
     val currentUser = viewModel.checkCurrentUser()
 
@@ -85,7 +88,7 @@ fun ModernSettingsScreen(
                 title = {
                     Text(
                         text = "Settings",
-                        fontFamily = helveticaFont,
+                        fontFamily = Monospace,
                         style = MaterialTheme.typography.h5.copy(
                             fontWeight = FontWeight.Bold,
                             color = textColor
@@ -147,9 +150,6 @@ fun ModernSettingsScreen(
                 dividerColor = dividerColor,
                 iconTint = iconTint,
                 isDarkMode = isDarkMode,
-                onDarkModeToggle = { newValue ->
-                    ThemeManager.toggleDarkMode(newValue)
-                },
                 navController = navController
             )
 
@@ -232,7 +232,7 @@ fun UserProfileCard(
                 ) {
                     Text(
                         text = initials,
-                        fontFamily = helveticaFont,
+                        fontFamily = Monospace,
                         style = MaterialTheme.typography.h6.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -247,7 +247,7 @@ fun UserProfileCard(
             Column {
                 Text(
                     text = userName,
-                    fontFamily = helveticaFont,
+                    fontFamily = Monospace,
                     style = MaterialTheme.typography.subtitle1.copy(
                         fontWeight = FontWeight.Bold,
                         color = textColor
@@ -255,7 +255,7 @@ fun UserProfileCard(
                 )
                 Text(
                     text = userEmail,
-                    fontFamily = helveticaFont,
+                    fontFamily = Monospace,
                     style = MaterialTheme.typography.body2.copy(
                         color = secondaryTextColor
                     )
@@ -283,11 +283,9 @@ fun SettingsOptionsList(
     dividerColor: Color,
     iconTint: Color,
     isDarkMode: Boolean,
-    onDarkModeToggle: (Boolean) -> Unit,
     navController: NavHostController
 ) {
     val settingsOptions = listOf(
-        SettingsItem(Icons.Outlined.DarkMode, "Dark Mode", SettingsItemType.SWITCH),
         SettingsItem(Icons.AutoMirrored.Outlined.Help, "Help", SettingsItemType.DETAIL),
         SettingsItem(Icons.Outlined.AccountCircle, "Accounts", SettingsItemType.DETAIL),
         SettingsItem(Icons.Outlined.Info, "About BLE", SettingsItemType.DETAIL),
@@ -301,26 +299,14 @@ fun SettingsOptionsList(
     ) {
         Column {
             settingsOptions.forEachIndexed { index, item ->
-                if (item.title == "Dark Mode") {
-                    SettingsItemRow(
-                        item = item,
-                        textColor = textColor,
-                        secondaryTextColor = secondaryTextColor,
-                        iconTint = iconTint,
-                        initialSwitchState = isDarkMode,
-                        onSwitchChange = onDarkModeToggle,
-                        navController = navController
-                    )
-                } else {
-                    SettingsItemRow(
-                        item = item,
-                        textColor = textColor,
-                        secondaryTextColor = secondaryTextColor,
-                        iconTint = iconTint,
-                        initialSwitchState = isDarkMode,
-                        navController = navController
-                    )
-                }
+                SettingsItemRow(
+                    item = item,
+                    textColor = textColor,
+                    secondaryTextColor = secondaryTextColor,
+                    iconTint = iconTint,
+                    initialSwitchState = isDarkMode,
+                    navController = navController
+                )
 
                 if (index < settingsOptions.size - 1) {
                     Divider(
@@ -378,7 +364,7 @@ fun SettingsItemRow(
 
         Text(
             text = item.title,
-            fontFamily = helveticaFont,
+            fontFamily = Monospace,
             style = MaterialTheme.typography.body1.copy(
                 fontWeight = FontWeight.Medium,
                 color = textColor
@@ -447,7 +433,7 @@ fun SettingsItemRow(
 
                             Text(
                                 text = "Bluetooth Low Energy",
-                                fontFamily = helveticaFont,
+                                fontFamily = Monospace,
                                 style = MaterialTheme.typography.subtitle1.copy(fontWeight = FontWeight.Bold),
                                 textAlign = TextAlign.Center,
                                 color = if (initialSwitchState) Color.White else Color.Black,
@@ -458,7 +444,7 @@ fun SettingsItemRow(
                                 text = "Bluetooth Low Energy (BLE) is a wireless personal area network technology " +
                                         "designed for low power consumption while maintaining a similar communication " +
                                         "range to classic Bluetooth.",
-                                fontFamily = helveticaFont,
+                                fontFamily = Monospace,
                                 style = MaterialTheme.typography.body2,
                                 textAlign = TextAlign.Justify,
                                 color = if (initialSwitchState) Color.White else Color.Black,
@@ -467,7 +453,7 @@ fun SettingsItemRow(
 
                             Text(
                                 text = "Key Features:",
-                                fontFamily = helveticaFont,
+                                fontFamily = Monospace,
                                 style = MaterialTheme.typography.subtitle2.copy(fontWeight = FontWeight.Bold),
                                 color = if (initialSwitchState) Color.White else Color.Black,
                                 modifier = Modifier.padding(top = 12.dp, bottom = 8.dp, start = 8.dp)
@@ -495,7 +481,7 @@ fun SettingsItemRow(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = feature,
-                                    fontFamily = helveticaFont,
+                                    fontFamily = Monospace,
                                     style = MaterialTheme.typography.body2,
                                     color = if (initialSwitchState) Color.White else Color.Black,
                                     modifier = Modifier.weight(1f)
@@ -554,7 +540,7 @@ fun SettingsItemRow(
 
                     Text(
                         text = "For any help or to report bugs:",
-                        fontFamily = helveticaFont,
+                        fontFamily = Monospace,
                         style = MaterialTheme.typography.body1,
                         textAlign = TextAlign.Center,
                         color = if (initialSwitchState) Color.White else Color.Black,
@@ -580,7 +566,7 @@ fun SettingsItemRow(
                         Text(
                             text = "Contact Developer",
                             color = iconTint,
-                            fontFamily = helveticaFont,
+                            fontFamily = Monospace,
                             style = MaterialTheme.typography.button
                         )
                     }
@@ -589,7 +575,7 @@ fun SettingsItemRow(
                         onClick = { showHelpDialog = false },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                     ) {
-                        Text("Close", color = iconTint, fontFamily = helveticaFont, style = MaterialTheme.typography.button)
+                        Text("Close", color = iconTint, fontFamily = Monospace, style = MaterialTheme.typography.button)
                     }
                 }
             }

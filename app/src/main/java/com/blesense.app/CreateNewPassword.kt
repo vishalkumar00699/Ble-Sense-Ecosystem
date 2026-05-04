@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily.Companion.Monospace
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -85,7 +86,7 @@ fun CreateNewPasswordScreen() {
                         text = "Create new password",
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = helveticaFont, // Custom Helvetica font
+                        fontFamily = Monospace, // Custom Helvetica font
                         color = Color.Black,
                         modifier = Modifier.padding(bottom = 16.dp) // Bottom padding
                     )
@@ -99,7 +100,7 @@ fun CreateNewPasswordScreen() {
                     text = "Your new password must be unique from those previously used.",
                     fontSize = 16.sp,
                     color = Color.Gray.copy(alpha = 0.8f), // Semi-transparent gray
-                    fontFamily = helveticaFont, // Custom Helvetica font
+                    fontFamily = Monospace, // Custom Helvetica font
                     lineHeight = 24.sp, // Line height for readability
                     modifier = Modifier.padding(bottom = 32.dp) // Bottom padding
                 )
@@ -117,7 +118,7 @@ fun CreateNewPasswordScreen() {
                     OutlinedTextField(
                         value = newPassword,
                         onValueChange = { newPassword = it }, // Update state on input change
-                        label = { Text("New Password", fontFamily = helveticaFont) },
+                        label = { Text("New Password", fontFamily = Monospace) },
                         modifier = Modifier
                             .fillMaxWidth() // Fill available width
                             .padding(bottom = 16.dp), // Bottom padding
@@ -156,7 +157,7 @@ fun CreateNewPasswordScreen() {
                     OutlinedTextField(
                         value = confirmPassword,
                         onValueChange = { confirmPassword = it }, // Update state on input change
-                        label = { Text("Confirm Password", fontFamily = helveticaFont) },
+                        label = { Text("Confirm Password", fontFamily = Monospace) },
                         modifier = Modifier
                             .fillMaxWidth() // Fill available width
                             .padding(bottom = 16.dp), // Bottom padding
@@ -211,7 +212,7 @@ fun CreateNewPasswordScreen() {
                         text = "Continue",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = helveticaFont // Custom Helvetica font
+                        fontFamily = Monospace // Custom Helvetica font
                     )
                 }
             }
@@ -228,7 +229,7 @@ fun CreateNewPasswordScreen() {
                 Text(
                     text = "Remember Password? ",
                     color = Color.Gray.copy(alpha = 0.8f), // Semi-transparent gray
-                    fontFamily = helveticaFont, // Custom Helvetica font
+                    fontFamily = Monospace, // Custom Helvetica font
                     fontWeight = FontWeight.SemiBold
                 )
                 // Button to navigate to the login screen
@@ -237,7 +238,7 @@ fun CreateNewPasswordScreen() {
                         text = "Login",
                         color = primaryColor, // iOS blue color
                         fontWeight = FontWeight.SemiBold,
-                        fontFamily = helveticaFont // Custom Helvetica font
+                        fontFamily = Monospace // Custom Helvetica font
                     )
                 }
             }

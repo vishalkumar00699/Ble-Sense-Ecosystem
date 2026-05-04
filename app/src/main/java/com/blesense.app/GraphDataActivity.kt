@@ -41,9 +41,6 @@ fun ChartScreen2(navController: NavController, title: String?, value: String?) {
     // Unused value parameter (can be used later for real-time value display)
     value ?: "Unknown Value"
 
-    // Observe current theme mode (dark/light) from ThemeManager
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-
     // Hardcoded English strings (ideal for future localization via string resources)
     val unknownTitle = "Unknown Title"
     val sensorTitlePrefix = "Bluetooth Sensor"
@@ -69,19 +66,15 @@ fun ChartScreen2(navController: NavController, title: String?, value: String?) {
     )
 
     // Dynamic background gradient based on current theme
-    val backgroundGradient = if (isDarkMode) {
-        Brush.verticalGradient(listOf(Color(0xFF121212), Color(0xFF424242)))
-    } else {
-        Brush.verticalGradient(listOf(Color.White, Color.LightGray))
-    }
+    val backgroundGradient = Brush.verticalGradient(listOf(com.blesense.app.ui.theme.BleSenseColors.BackgroundDark, com.blesense.app.ui.theme.BleSenseColors.SurfaceDark))
 
     // Theme-aware color palette
-    val appBarBackground = if (isDarkMode) Color(0xFF121212) else Color.White
-    val cardBackground = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
-    val chartBackground = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    val secondaryTextColor = if (isDarkMode) Color(0xFFB0B0B0) else Color.Gray
-    val chartLineColor = if (isDarkMode) Color(0xFFBB86FC) else Color.Blue
+    val appBarBackground = com.blesense.app.ui.theme.BleSenseColors.SurfaceDark
+    val cardBackground = com.blesense.app.ui.theme.BleSenseColors.SurfaceLight
+    val chartBackground = com.blesense.app.ui.theme.BleSenseColors.SurfaceDark
+    val textColor = com.blesense.app.ui.theme.BleSenseColors.TextPrimary
+    val secondaryTextColor = com.blesense.app.ui.theme.BleSenseColors.TextSecondary
+    val chartLineColor = com.blesense.app.ui.theme.BleSenseColors.PrimaryGreen
 
     // State to manage LazyColumn scroll position
     val listState = rememberLazyListState()

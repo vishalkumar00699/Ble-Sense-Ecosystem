@@ -13,7 +13,7 @@ android {
         applicationId = "com.blesense.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 9  // Increment version for Play Store update
+        versionCode = 15  // Increment version for Play Store update
         versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -112,6 +112,7 @@ dependencies {
     // ==================== LIFECYCLE ====================
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
+    implementation(libs.foundation)
 
     // ==================== TESTING ====================
     testImplementation(libs.junit)

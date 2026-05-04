@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily.Companion.Monospace
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -47,16 +48,13 @@ data class SplashScreenText(
 fun SplashScreen(onNavigateToLogin: () -> Unit) {
     LocalContext.current // Access the current context
 
-    // Observe theme state only
-    val isDarkMode by ThemeManager.isDarkMode.collectAsState() // Dark mode state
-
     // Use fixed English text
     val splashText = SplashScreenText()
 
     // Define theme-based colors
-    val backgroundColor = if (isDarkMode) Color(0xFF121212) else Color.White // Background color
-    val textColor = if (isDarkMode) Color.White else Color.Black // Primary text color
-    val secondaryTextColor = if (isDarkMode) Color.White.copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.8f) // Secondary text color with opacity
+    val backgroundColor = com.blesense.app.ui.theme.BleSenseColors.BackgroundDark // Background color
+    val textColor = com.blesense.app.ui.theme.BleSenseColors.TextPrimary // Primary text color
+    val secondaryTextColor = com.blesense.app.ui.theme.BleSenseColors.TextSecondary // Secondary text color with opacity
 
     // Navigate to login screen after a 2-second delay
     LaunchedEffect(key1 = true) {
@@ -132,7 +130,7 @@ fun SplashScreen(onNavigateToLogin: () -> Unit) {
                     color = textColor, // Theme-based text color
                     fontWeight = FontWeight.Bold, // Bold text
                     textAlign = TextAlign.Center, // Center text
-                    fontFamily = helveticaFont // Custom font
+                    fontFamily = Monospace // Custom font
                 ),
                 modifier = Modifier
                     .graphicsLayer(scaleX = titleScale, scaleY = titleScale) // Apply zoom animation

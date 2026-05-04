@@ -102,6 +102,7 @@ import java.util.UUID
 import kotlin.random.Random
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
+import com.blesense.app.ui.theme.BleSenseColors
 
 // Enum to represent Bluetooth scanning states
 enum class ScanState {
@@ -359,9 +360,9 @@ fun DeviceSelectionDialog(
     onDismissRequest: () -> Unit
 ) {
     val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-    val cardBackgroundColor = if (isDarkMode) Color(0xFF1E1E1E) else Color.White
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    val dividerColor = if (isDarkMode) Color(0xFF2A2A2A) else Color(0xFFE0E0E0)
+    val cardBackgroundColor = BleSenseColors.SurfaceDark
+    val textColor = BleSenseColors.TextPrimary
+    val dividerColor = BleSenseColors.SurfaceLight
 
     Dialog(onDismissRequest = onDismissRequest) {
         Card(
@@ -493,10 +494,11 @@ fun RobotControlScreen(
     val configuration = LocalConfiguration.current
     var isConnected by remember { mutableStateOf(BluetoothConnectionManager.isConnected()) }
     val isDarkMode by ThemeManager.isDarkMode.collectAsState()
-    val backgroundColor = if (isDarkMode) Color(0xFF121212) else Color(0xFFF2F2F7)
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    val secondaryTextColor = if (isDarkMode) Color(0xFFB0B0B0) else Color.Gray
-    val iconTint = if (isDarkMode) Color(0xFF64B5F6) else Color(0xFF007AFF)
+
+    val backgroundColor = BleSenseColors.BackgroundDark
+    val textColor = BleSenseColors.TextPrimary
+    val secondaryTextColor = BleSenseColors.TextSecondary
+    val iconTint = BleSenseColors.PurpleAccent
 
     if (configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
         LaunchedEffect(Unit) {

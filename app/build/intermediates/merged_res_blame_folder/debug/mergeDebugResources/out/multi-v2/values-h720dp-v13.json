@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.blesense.app-mergeDebugResources-85:/values-h720dp-v13/values-h720dp-v13.xml",
+            "outputFile": "com.blesense.app-mergeDebugResources-77:/values-h720dp-v13/values-h720dp-v13.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\DELL\\.gradle\\caches\\8.13\\transforms\\bb13d7c7ed37ab6159f464b63be67310\\transformed\\appcompat-1.6.1\\res\\values-h720dp-v13\\values-h720dp-v13.xml",
+                    "source": "C:\\Users\\TIF-AWaDH\\.gradle\\caches\\8.13\\transforms\\91efe34d6f40aad81e4318663c78fb0b\\transformed\\appcompat-1.6.1\\res\\values-h720dp-v13\\values-h720dp-v13.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

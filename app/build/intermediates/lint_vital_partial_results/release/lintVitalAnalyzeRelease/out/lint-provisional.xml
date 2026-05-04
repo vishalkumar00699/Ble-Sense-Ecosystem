@@ -13,10 +13,10 @@
             file="${:app*projectDir}/build.gradle.kts"
             line="89"
             column="5"
-            startOffset="3079"
+            startOffset="3080"
             endLine="89"
             endColumn="45"
-            endOffset="3119"/>
+            endOffset="3120"/>
     </incident>
 
 </incidents>
