@@ -21,7 +21,7 @@ function App() {
   const fetchPackets = async () => {
     try {
       // Use current window hostname to ensure compatibility across networks
-      const response = await axios.get(`https://ble-sense.onrender.com/api/packets`);
+      const response = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/packets`);
 
       // Transform raw packets into categorized sensor objects
       const categorizedPackets = response.data.map(pkt => {
@@ -66,8 +66,8 @@ function App() {
   const uniqueAppIds = ['All', ...new Set(packets.map(p => p.appId).filter(id => id && id !== 'Unknown'))];
 
   // Filtering Logic
-  const filteredByApp = selectedAppId === 'All' 
-    ? packets 
+  const filteredByApp = selectedAppId === 'All'
+    ? packets
     : packets.filter(p => p.appId === selectedAppId);
 
   const filteredPackets = activeCategory === 'All'
@@ -125,8 +125,8 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div className="device-selector">
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginRight: '8px' }}>Device:</span>
-              <select 
-                value={selectedAppId} 
+              <select
+                value={selectedAppId}
                 onChange={(e) => setSelectedAppId(e.target.value)}
                 className="app-id-select"
               >

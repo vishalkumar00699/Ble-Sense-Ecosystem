@@ -20,11 +20,9 @@ interface BackendService {
     suspend fun sendSensorDataBatch(@Body packets: List<SensorPacket>): Response<Void>
 }
 
+
 object RetrofitClient {
-    // Replace with your actual backend IP address if running on a real device on the same network
-    // e.g., "http://192.168.1.10:5000/"
-    // Note: If using Android Emulator, 10.0.2.2 points to localhost of your dev machine.
-    private const val BASE_URL = "https://ble-sense.onrender.com/"
+    private val BASE_URL = BuildConfig.BASE_URL
 
     val instance: BackendService by lazy {
         val retrofit = Retrofit.Builder()
