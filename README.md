@@ -51,12 +51,5 @@ git clone https://github.com/vishalkumar00699/Ble-Sense-Ecosystem.git
 - Android SDK 24+
 - BLE Supported Android Device
 
-## Future Improvements
-- Multi-device BLE support
-- Cloud synchronization
-- Advanced analytics dashboard
-- Device filtering and whitelisting
-- Data export system
-
 ## Developer
 **Vishal Kumar**
