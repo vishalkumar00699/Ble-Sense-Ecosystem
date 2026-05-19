@@ -33,6 +33,30 @@ Here is a glimpse of the application interface and data dashboards:
 - `backend/` - Server-side components and data management.
 - `portfolio/` - Developer portfolio showcasing this project.
 
-## Setup & Installation
+## Installation
 
-Please refer to the specific sub-directories for detailed instructions on setting up individual components.
+### Clone the Repository
+```bash
+git clone https://github.com/vishalkumar00699/Ble-Sense-Ecosystem.git
+```
+
+### Open in Android Studio
+1. Open Android Studio
+2. Click on **Open Project**
+3. Select the project folder
+4. Sync Gradle and Run
+
+## Requirements
+- Android Studio Hedgehog or later
+- Android SDK 24+
+- BLE Supported Android Device
+
+## Future Improvements
+- Multi-device BLE support
+- Cloud synchronization
+- Advanced analytics dashboard
+- Device filtering and whitelisting
+- Data export system
+
+## Developer
+**Vishal Kumar**
